@@ -17,6 +17,8 @@ import {
 
 import mongoose from "mongoose";
 import express from "express";
+import dotenv from "dotenv";
+dotenv.config(); // <-- FIX: loads BOT_TOKEN + MONGO_URI
 
 // ================================================================
 // EXPRESS SERVER (Cloudflare Tunnel)
@@ -201,8 +203,8 @@ function openMatchModal(interaction, autofill, data) {
   const notes = new TextInputBuilder()
     .setCustomId("notes")
     .setLabel("Notes")
-    .setStyle(TextInputStyle.Paragraph)
-    .setRequired(false);
+    .setRequired(false)
+    .setStyle(TextInputStyle.Paragraph);
 
   if (autofill && data) {
     gameplay.setValue(data.gameplay);
@@ -254,6 +256,7 @@ client.on("interactionCreate", async interaction => {
   const comm = interaction.fields.getTextInputValue("communication");
   const notes = interaction.fields.getTextInputValue("notes");
 
+  // SAVE INTO MONGODB
   await HostStats.findOneAndUpdate(
     { userId: user.id },
     { gameplay, ability, region, communication: comm, notes },
@@ -263,7 +266,6 @@ client.on("interactionCreate", async interaction => {
   const { level, rank, playstyle } = parseLevelRankPlaystyle(gameplay);
   const { vc, language } = parseCommunication(comm);
 
-  // PREMIUM MATCH EMBED
   const embed = new EmbedBuilder()
     .setColor("#22C55E")
     .setTitle("🏐 Volley Legends Match Found")
