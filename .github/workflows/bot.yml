@@ -37,7 +37,7 @@ jobs:
       # Start the Discord bot (your bot file)
       - name: Start Discord Bot
         run: |
-          node src/index.js &
+          node src/indexV2.js &
           sleep 999999
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
