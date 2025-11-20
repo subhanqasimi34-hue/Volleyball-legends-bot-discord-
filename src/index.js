@@ -66,4 +66,86 @@ client.once('ready', async () => {
   await setupMatchmakingEmbed();
 });
 
+// ---------------------------------------
+// FORM THAT OPENS WHEN "Create Match" IS CLICKED
+// ---------------------------------------
+client.on('interactionCreate', async interaction => {
+  if (!interaction.isButton()) return;
+
+  if (interaction.customId === "create_match") {
+
+    const form = new ModalBuilder()
+      .setCustomId("match_form")
+      .setTitle("Create Volley Legends Match");
+
+    const level = new TextInputBuilder()
+      .setCustomId("level")
+      .setLabel("Level")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true);
+
+    const playstyle = new TextInputBuilder()
+      .setCustomId("playstyle")
+      .setLabel("Playstyle")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true);
+
+    const ability = new TextInputBuilder()
+      .setCustomId("ability")
+      .setLabel("Ability")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true);
+
+    const rank = new TextInputBuilder()
+      .setCustomId("rank")
+      .setLabel("Rank")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true);
+
+    const region = new TextInputBuilder()
+      .setCustomId("region")
+      .setLabel("Region")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true);
+
+    const availability = new TextInputBuilder()
+      .setCustomId("availability")
+      .setLabel("Availability")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true);
+
+    const vc = new TextInputBuilder()
+      .setCustomId("vc")
+      .setLabel("Voice Chat (Yes/No)")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true);
+
+    const language = new TextInputBuilder()
+      .setCustomId("language")
+      .setLabel("Language")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true);
+
+    const notes = new TextInputBuilder()
+      .setCustomId("notes")
+      .setLabel("Additional Notes")
+      .setStyle(TextInputStyle.Paragraph)
+      .setRequired(false);
+
+    form.addComponents(
+      new ActionRowBuilder().addComponents(level),
+      new ActionRowBuilder().addComponents(playstyle),
+      new ActionRowBuilder().addComponents(ability),
+      new ActionRowBuilder().addComponents(rank),
+      new ActionRowBuilder().addComponents(region),
+      new ActionRowBuilder().addComponents(availability),
+      new ActionRowBuilder().addComponents(vc),
+      new ActionRowBuilder().addComponents(language),
+      new ActionRowBuilder().addComponents(notes)
+    );
+
+    await interaction.showModal(form);
+  }
+});
+
 client.login(process.env.BOT_TOKEN);
