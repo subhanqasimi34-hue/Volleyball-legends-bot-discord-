@@ -1,4 +1,4 @@
-// indexV2.js – final version with "Unknown" fallback
+// Full new index.js with automatic parsing + DM fail detection
 
 import {
   Client,
@@ -16,11 +16,12 @@ import {
 
 import express from "express";
 
-// Express server for Cloudflare Tunnel
+// Express server (Cloudflare Tunnel)
 const app = express();
 app.get("/", (req, res) => res.send("Volley Legends Bot running"));
 app.listen(3000, () => console.log("Express OK"));
 
+// Discord client
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -30,18 +31,63 @@ const client = new Client({
   partials: [Partials.Channel, Partials.Message, Partials.User]
 });
 
-// Channels
+// CHANNELS
 const MATCHMAKING_CHANNEL_ID = "1441139756007161906";
 const FIND_PLAYERS_CHANNEL_ID = "1441140684622008441";
 
-// Screenshot for host DM
+// SCREENSHOT used in host DM
 const screenshot = new AttachmentBuilder(
   "/mnt/data/Screenshot 2025-11-20 190505.png"
 );
 
-// ---------------------------------------------------------------
-// Place matchup embed
-// ---------------------------------------------------------------
+// ================================================================
+// AUTO-DETECT PARSING FUNCTIONS
+// ================================================================
+
+function parseLevelRankPlaystyle(text) {
+  const parts = text.split("|").map(p => p.trim());
+
+  let level = "Unknown";
+  let rank = "Unknown";
+  let playstyle = "Unknown";
+
+  // LEVEL = number
+  const number = parts.find(p => /^\d{1,4}$/.test(p));
+  if (number) level = number;
+
+  // RANK = anything containing known rank words or roman numbers
+  const rankPart = parts.find(p =>
+    /(bronze|silver|gold|diamond|elite|pro|i|ii|iii)/i.test(p)
+  );
+  if (rankPart) rank = rankPart;
+
+  // PLAYSTYLE = whatever is left
+  const playPart = parts.find(
+    p => p !== number && p !== rankPart
+  );
+  if (playPart) playstyle = playPart;
+
+  return { level, rank, playstyle };
+}
+
+function parseCommunication(text) {
+  const parts = text.split("|").map(p => p.trim());
+
+  let vc = "Unknown";
+  let language = "Unknown";
+
+  const vcPart = parts.find(p => /(yes|no|vc|voice)/i.test(p));
+  if (vcPart) vc = vcPart;
+
+  const langPart = parts.find(p => /(eng|de|fr|spanish|arabic|turkish|english)/i.test(p));
+  if (langPart) language = langPart;
+
+  return { vc, language };
+}
+
+// ================================================================
+// PLACE MATCHMAKING EMBED
+// ================================================================
 async function setupMatchmakingEmbed() {
   const channel = client.channels.cache.get(MATCHMAKING_CHANNEL_ID);
   if (!channel) return console.log("Matchmaking channel not found.");
@@ -70,91 +116,81 @@ client.once("ready", async () => {
   await setupMatchmakingEmbed();
 });
 
-// ---------------------------------------------------------------
-// Show Match Form
-// ---------------------------------------------------------------
+// ================================================================
+// OPEN MATCH FORM
+// ================================================================
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
+  if (interaction.customId !== "create_match") return;
 
-  if (interaction.customId === "create_match") {
-    const modal = new ModalBuilder()
-      .setCustomId("match_form")
-      .setTitle("Create Volley Legends Match");
+  const modal = new ModalBuilder()
+    .setCustomId("match_form")
+    .setTitle("Create Volley Legends Match");
 
-    const gameplay = new TextInputBuilder()
-      .setCustomId("gameplay")
-      .setLabel("Gameplay Info (Level | Rank | Playstyle)")
-      .setStyle(TextInputStyle.Short)
-      .setRequired(true);
+  const gameplay = new TextInputBuilder()
+    .setCustomId("gameplay")
+    .setLabel("Gameplay (Level | Rank | Playstyle)")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true);
 
-    const ability = new TextInputBuilder()
-      .setCustomId("ability")
-      .setLabel("Ability")
-      .setStyle(TextInputStyle.Short)
-      .setRequired(true);
+  const ability = new TextInputBuilder()
+    .setCustomId("ability")
+    .setLabel("Ability")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true);
 
-    const region = new TextInputBuilder()
-      .setCustomId("region")
-      .setLabel("Region")
-      .setStyle(TextInputStyle.Short)
-      .setRequired(true);
+  const region = new TextInputBuilder()
+    .setCustomId("region")
+    .setLabel("Region")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true);
 
-    const communication = new TextInputBuilder()
-      .setCustomId("communication")
-      .setLabel("Communication (VC | Language)")
-      .setStyle(TextInputStyle.Short)
-      .setRequired(true);
+  const communication = new TextInputBuilder()
+    .setCustomId("communication")
+    .setLabel("Communication (VC | Language)")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true);
 
-    const notes = new TextInputBuilder()
-      .setCustomId("notes")
-      .setLabel("Additional Notes")
-      .setStyle(TextInputStyle.Paragraph)
-      .setRequired(false);
+  const notes = new TextInputBuilder()
+    .setCustomId("notes")
+    .setLabel("Notes")
+    .setStyle(TextInputStyle.Paragraph)
+    .setRequired(false);
 
-    modal.addComponents(
-      new ActionRowBuilder().addComponents(gameplay),
-      new ActionRowBuilder().addComponents(ability),
-      new ActionRowBuilder().addComponents(region),
-      new ActionRowBuilder().addComponents(communication),
-      new ActionRowBuilder().addComponents(notes)
-    );
+  modal.addComponents(
+    new ActionRowBuilder().addComponents(gameplay),
+    new ActionRowBuilder().addComponents(ability),
+    new ActionRowBuilder().addComponents(region),
+    new ActionRowBuilder().addComponents(communication),
+    new ActionRowBuilder().addComponents(notes)
+  );
 
-    return interaction.showModal(modal);
-  }
+  return interaction.showModal(modal);
 });
 
-// ---------------------------------------------------------------
-// Handle Match Form Submit
-// ---------------------------------------------------------------
+// ================================================================
+// HANDLE SUBMITTED MATCH FORM
+// ================================================================
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isModalSubmit()) return;
   if (interaction.customId !== "match_form") return;
 
   const host = interaction.user;
 
-  // Gameplay: Level | Rank | Playstyle
-  const rawGameplay = interaction.fields.getTextInputValue("gameplay");
-  const parts = rawGameplay.split("|").map(x => x.trim());
+  const gameplayRaw = interaction.fields.getTextInputValue("gameplay");
+  const commRaw = interaction.fields.getTextInputValue("communication");
 
-  const level = parts[0] || "Unknown";
-  const rank = parts[1] || "Unknown";
-  const playstyle = parts[2] || "Unknown";
-
-  // Communication: VC | Language
-  const rawComm = interaction.fields.getTextInputValue("communication");
-  const comm = rawComm.split("|").map(x => x.trim());
-
-  const vc = comm[0] || "Unknown";
-  const language = comm[1] || "Unknown";
-
-  const ability = interaction.fields.getTextInputValue("ability") || "Unknown";
-  const region = interaction.fields.getTextInputValue("region") || "Unknown";
+  const ability = interaction.fields.getTextInputValue("ability");
+  const region = interaction.fields.getTextInputValue("region");
   const notes = interaction.fields.getTextInputValue("notes") || "None";
+
+  const { level, rank, playstyle } = parseLevelRankPlaystyle(gameplayRaw);
+  const { vc, language } = parseCommunication(commRaw);
 
   const embed = new EmbedBuilder()
     .setTitle("Volley Legends Match Found")
-    .setDescription("A player is looking for teammates!")
     .setColor("Green")
+    .setDescription("A player is looking for teammates!")
     .addFields(
       { name: "Host", value: `${host}`, inline: false },
       { name: "Level", value: level, inline: true },
@@ -175,14 +211,7 @@ client.on("interactionCreate", async (interaction) => {
   );
 
   const channel = client.channels.cache.get(FIND_PLAYERS_CHANNEL_ID);
-  if (!channel)
-    return interaction.reply({ content: "Posting channel not found.", ephemeral: true });
-
-  await channel.send({
-    content: `${host}`,
-    embeds: [embed],
-    components: [row]
-  });
+  await channel.send({ content: `${host}`, embeds: [embed], components: [row] });
 
   await host.send({
     embeds: [
@@ -193,19 +222,27 @@ client.on("interactionCreate", async (interaction) => {
     ]
   }).catch(() => {});
 
-  await interaction.reply({ content: "Your match has been created!", ephemeral: true });
+  await interaction.reply({
+    content: "Your match has been created!",
+    ephemeral: true
+  });
 });
 
-// ---------------------------------------------------------------
-// Player → Host request (DM)
-// ---------------------------------------------------------------
+// ================================================================
+// PLAYER REQUEST → DM HOST  (with DM fail detection)
+// ================================================================
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
   if (!interaction.customId.startsWith("request_")) return;
 
   const hostId = interaction.customId.replace("request_", "");
   const host = await client.users.fetch(hostId).catch(() => {});
-  if (!host) return;
+  if (!host) {
+    return interaction.reply({
+      content: "❌ The host could not be found.",
+      ephemeral: true
+    });
+  }
 
   const requester = interaction.user;
 
@@ -215,30 +252,61 @@ client.on("interactionCreate", async (interaction) => {
     .setColor("Orange");
 
   const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`accept_${requester.id}`).setLabel("Accept").setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId(`decline_${requester.id}`).setLabel("Decline").setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId(`sendlink_${requester.id}`).setLabel("Send Private Server Link").setStyle(ButtonStyle.Primary)
+    new ButtonBuilder()
+      .setCustomId(`accept_${requester.id}`)
+      .setLabel("Accept")
+      .setStyle(ButtonStyle.Success),
+
+    new ButtonBuilder()
+      .setCustomId(`decline_${requester.id}`)
+      .setLabel("Decline")
+      .setStyle(ButtonStyle.Danger),
+
+    new ButtonBuilder()
+      .setCustomId(`sendlink_${requester.id}`)
+      .setLabel("Send Private Server Link")
+      .setStyle(ButtonStyle.Primary)
   );
 
-  await host.send({
-    content: "You received a new match request!",
-    embeds: [embed],
-    components: [row],
-    files: [screenshot]
-  }).catch(() => {});
+  let dmFailed = false;
 
-  await interaction.reply({ content: "Your request was sent!", ephemeral: true });
+  await host
+    .send({
+      content: "You received a new match request!",
+      embeds: [embed],
+      components: [row],
+      files: [screenshot]
+    })
+    .catch((err) => {
+      dmFailed = true;
+      console.log("DM failed:", err);
+    });
+
+  if (dmFailed) {
+    return interaction.reply({
+      content:
+        "❌ The host has DMs disabled. They must enable **Direct Messages** on Discord to receive your request.",
+      ephemeral: true
+    });
+  }
+
+  return interaction.reply({
+    content: "Your request was sent!",
+    ephemeral: true
+  });
 });
 
-// ---------------------------------------------------------------
-// Accept / Decline
-// ---------------------------------------------------------------
+// ================================================================
+// ACCEPT / DECLINE HANDLER
+// ================================================================
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
+
   if (
     !interaction.customId.startsWith("accept_") &&
     !interaction.customId.startsWith("decline_")
-  ) return;
+  )
+    return;
 
   const [action, targetId] = interaction.customId.split("_");
   const target = await client.users.fetch(targetId).catch(() => {});
@@ -249,12 +317,15 @@ client.on("interactionCreate", async (interaction) => {
       embeds: [
         new EmbedBuilder()
           .setTitle("Accepted!")
-          .setDescription("The host accepted your request. Wait for the private server link.")
+          .setDescription("The host accepted your request.")
           .setColor("Green")
       ]
     }).catch(() => {});
 
-    return interaction.reply({ content: "Player accepted.", ephemeral: true });
+    return interaction.reply({
+      content: "Player accepted.",
+      ephemeral: true
+    });
   }
 
   if (action === "decline") {
@@ -267,13 +338,16 @@ client.on("interactionCreate", async (interaction) => {
       ]
     }).catch(() => {});
 
-    return interaction.reply({ content: "Player declined.", ephemeral: true });
+    return interaction.reply({
+      content: "Player declined.",
+      ephemeral: true
+    });
   }
 });
 
-// ---------------------------------------------------------------
-// Send Private Server Link Modal
-// ---------------------------------------------------------------
+// ================================================================
+// SEND PRIVATE SERVER LINK → MODAL
+// ================================================================
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
   if (!interaction.customId.startsWith("sendlink_")) return;
@@ -288,16 +362,17 @@ client.on("interactionCreate", async (interaction) => {
     .setCustomId("serverlink")
     .setLabel("Roblox Private Server Link")
     .setPlaceholder("https://www.roblox.com/...")
-    .setRequired(true)
-    .setStyle(TextInputStyle.Short);
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true);
 
   modal.addComponents(new ActionRowBuilder().addComponents(input));
+
   return interaction.showModal(modal);
 });
 
-// ---------------------------------------------------------------
-// Send link (after modal submit)
-// ---------------------------------------------------------------
+// ================================================================
+// HANDLE LINK SUBMIT
+// ================================================================
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isModalSubmit()) return;
   if (!interaction.customId.startsWith("sendlinkmodal_")) return;
@@ -310,7 +385,8 @@ client.on("interactionCreate", async (interaction) => {
 
   if (!link.startsWith("https://www.roblox.com/")) {
     return interaction.reply({
-      content: "Invalid link. Only **https://www.roblox.com/** links are allowed.",
+      content:
+        "❌ Invalid link. Only **https://www.roblox.com/** links are allowed.",
       ephemeral: true
     });
   }
@@ -324,8 +400,11 @@ client.on("interactionCreate", async (interaction) => {
     ]
   }).catch(() => {});
 
-  return interaction.reply({ content: "Private server link sent to player.", ephemeral: true });
+  return interaction.reply({
+    content: "Private server link sent.",
+    ephemeral: true
+  });
 });
 
-// ---------------------------------------------------------------
+// START BOT
 client.login(process.env.BOT_TOKEN);
