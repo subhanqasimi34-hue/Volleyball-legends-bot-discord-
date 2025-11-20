@@ -25,16 +25,16 @@ const client = new Client({
   partials: [Partials.Message, Partials.Channel],
 });
 
-// 👉 HIER kommt der neue CODE hin
-const MATCHMAKING_CHANNEL_ID = 1441139756007161906;
+// 👉 NEW CODE HERE
+const MATCHMAKING_CHANNEL_ID = "YOUR_CHANNEL_ID_HERE";
 
 async function setupMatchmakingEmbed() {
   const channel = client.channels.cache.get(MATCHMAKING_CHANNEL_ID);
-  if (!channel) return console.log("Matchmaking-Channel nicht gefunden.");
+  if (!channel) return console.log("Matchmaking channel not found.");
 
   const embed = new EmbedBuilder()
     .setTitle("Volley Legends Matchmaking")
-    .setDescription("Klicke unten auf Create Match, um ein Match zu erstellen.")
+    .setDescription("Click below on **Create Match** to create your matchmaking post.")
     .setColor("Blue");
 
   const row = new ActionRowBuilder().addComponents(
@@ -51,7 +51,7 @@ async function setupMatchmakingEmbed() {
 
   await channel.send({ embeds: [embed], components: [row] });
 
-  console.log("Matchmaking-Embed gesetzt.");
+  console.log("Matchmaking embed posted.");
 }
 
 client.once('ready', async () => {
@@ -60,4 +60,3 @@ client.once('ready', async () => {
 });
 
 client.login(process.env.BOT_TOKEN);
-
