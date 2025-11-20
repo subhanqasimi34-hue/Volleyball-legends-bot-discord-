@@ -18,7 +18,7 @@ import {
 import mongoose from "mongoose";
 import express from "express";
 import dotenv from "dotenv";
-dotenv.config(); // <-- FIX: loads BOT_TOKEN + MONGO_URI
+dotenv.config();
 
 // ================================================================
 // EXPRESS SERVER (Cloudflare Tunnel)
@@ -61,8 +61,8 @@ const client = new Client({
   partials: [Partials.Channel, Partials.Message, Partials.User]
 });
 
-// Matchmaking channel
-const MATCHMAKING_CHANNEL_ID = "1441139756007161906";
+// CHANNEL IDs
+const MATCHMAKING_CHANNEL_ID = "1441139756007161906"; // ONLY this is cleared
 let parentMessage = null;
 
 // ================================================================
@@ -102,7 +102,7 @@ function parseCommunication(text) {
 }
 
 // ================================================================
-// RESET MATCHMAKING CHANNEL
+// RESET MATCHMAKING CHANNEL (ONLY THIS ONE!)
 // ================================================================
 async function resetMatchmakingChannel() {
   const channel = client.channels.cache.get(MATCHMAKING_CHANNEL_ID);
@@ -133,7 +133,7 @@ client.once("ready", async () => {
 });
 
 // ================================================================
-// CREATE MATCH CLICK → REUSE SETTINGS PROMPT
+// CREATE MATCH CLICK → REUSE SETTINGS
 // ================================================================
 client.on("interactionCreate", async interaction => {
   if (!interaction.isButton()) return;
@@ -151,60 +151,33 @@ client.on("interactionCreate", async interaction => {
     .setDescription("Would you like to autofill your previous match data?");
 
   const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId("reuse_yes")
-      .setLabel("Yes")
-      .setStyle(ButtonStyle.Success),
-    new ButtonBuilder()
-      .setCustomId("reuse_no")
-      .setLabel("No")
-      .setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId("reuse_yes").setLabel("Yes").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId("reuse_no").setLabel("No").setStyle(ButtonStyle.Secondary)
   );
 
-  return interaction.reply({
-    embeds: [embed],
-    components: [row],
-    ephemeral: true
-  });
+  return interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
 });
 
 // ================================================================
 // OPEN MODAL
 // ================================================================
 function openMatchModal(interaction, autofill, data) {
-  const modal = new ModalBuilder()
-    .setCustomId("match_form")
-    .setTitle("Create Volley Match");
+  const modal = new ModalBuilder().setCustomId("match_form").setTitle("Create Volley Match");
 
-  const gameplay = new TextInputBuilder()
-    .setCustomId("gameplay")
-    .setLabel("Level | Rank | Playstyle")
-    .setRequired(true)
-    .setStyle(TextInputStyle.Short);
+  const gameplay = new TextInputBuilder().setCustomId("gameplay")
+    .setLabel("Level | Rank | Playstyle").setStyle(TextInputStyle.Short).setRequired(true);
 
-  const ability = new TextInputBuilder()
-    .setCustomId("ability")
-    .setLabel("Ability")
-    .setRequired(true)
-    .setStyle(TextInputStyle.Short);
+  const ability = new TextInputBuilder().setCustomId("ability")
+    .setLabel("Ability").setStyle(TextInputStyle.Short).setRequired(true);
 
-  const region = new TextInputBuilder()
-    .setCustomId("region")
-    .setLabel("Region")
-    .setRequired(true)
-    .setStyle(TextInputStyle.Short);
+  const region = new TextInputBuilder().setCustomId("region")
+    .setLabel("Region").setStyle(TextInputStyle.Short).setRequired(true);
 
-  const comm = new TextInputBuilder()
-    .setCustomId("communication")
-    .setLabel("VC | Language")
-    .setRequired(true)
-    .setStyle(TextInputStyle.Short);
+  const comm = new TextInputBuilder().setCustomId("communication")
+    .setLabel("VC | Language").setStyle(TextInputStyle.Short).setRequired(true);
 
-  const notes = new TextInputBuilder()
-    .setCustomId("notes")
-    .setLabel("Notes")
-    .setRequired(false)
-    .setStyle(TextInputStyle.Paragraph);
+  const notes = new TextInputBuilder().setCustomId("notes")
+    .setLabel("Notes").setStyle(TextInputStyle.Paragraph).setRequired(false);
 
   if (autofill && data) {
     gameplay.setValue(data.gameplay);
@@ -226,7 +199,7 @@ function openMatchModal(interaction, autofill, data) {
 }
 
 // ================================================================
-// REUSE YES / NO
+// YES / NO BUTTONS
 // ================================================================
 client.on("interactionCreate", async interaction => {
   if (!interaction.isButton()) return;
@@ -235,14 +208,13 @@ client.on("interactionCreate", async interaction => {
     const stats = await HostStats.findOne({ userId: interaction.user.id });
     return openMatchModal(interaction, true, stats);
   }
-
   if (interaction.customId === "reuse_no") {
     return openMatchModal(interaction, false, null);
   }
 });
 
 // ================================================================
-// SUBMIT MATCH FORM → PREMIUM UI EMBED
+// SUBMIT MATCH FORM → PREMIUM MATCH EMBED
 // ================================================================
 client.on("interactionCreate", async interaction => {
   if (!interaction.isModalSubmit()) return;
@@ -256,7 +228,6 @@ client.on("interactionCreate", async interaction => {
   const comm = interaction.fields.getTextInputValue("communication");
   const notes = interaction.fields.getTextInputValue("notes");
 
-  // SAVE INTO MONGODB
   await HostStats.findOneAndUpdate(
     { userId: user.id },
     { gameplay, ability, region, communication: comm, notes },
@@ -283,24 +254,17 @@ client.on("interactionCreate", async interaction => {
       `📝 **Notes:**\n${notes || "None"}`
     );
 
-  const btn = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`request_${user.id}`)
-      .setLabel("Play Together")
-      .setStyle(ButtonStyle.Success)
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`request_${user.id}`).setLabel("Play Together").setStyle(ButtonStyle.Success)
   );
 
-  await parentMessage.reply({
-    content: `${user}`,
-    embeds: [embed],
-    components: [btn]
-  });
+  await parentMessage.reply({ content: `${user}`, embeds: [embed], components: [row] });
 
   return interaction.reply({ content: "Match created!", ephemeral: true });
 });
 
 // ================================================================
-// PLAYER REQUEST → PREMIUM REQUEST EMBED
+// PLAY REQUEST
 // ================================================================
 client.on("interactionCreate", async interaction => {
   if (!interaction.isButton()) return;
@@ -308,7 +272,6 @@ client.on("interactionCreate", async interaction => {
 
   const hostId = interaction.customId.replace("request_", "");
   const requester = interaction.user;
-
   const matchEmbed = interaction.message.embeds[0];
 
   const embed = new EmbedBuilder()
@@ -321,27 +284,12 @@ client.on("interactionCreate", async interaction => {
     );
 
   const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`accept_${requester.id}`)
-      .setLabel("Accept")
-      .setStyle(ButtonStyle.Success),
-
-    new ButtonBuilder()
-      .setCustomId(`decline_${requester.id}`)
-      .setLabel("Decline")
-      .setStyle(ButtonStyle.Danger),
-
-    new ButtonBuilder()
-      .setCustomId(`sendlink_${requester.id}`)
-      .setLabel("Send Private Server Link")
-      .setStyle(ButtonStyle.Primary)
+    new ButtonBuilder().setCustomId(`accept_${requester.id}`).setLabel("Accept").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`decline_${requester.id}`).setLabel("Decline").setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`sendlink_${requester.id}`).setLabel("Send Private Server Link").setStyle(ButtonStyle.Primary)
   );
 
-  await parentMessage.reply({
-    content: `<@${hostId}>`,
-    embeds: [embed],
-    components: [row]
-  });
+  await parentMessage.reply({ content: `<@${hostId}>`, embeds: [embed], components: [row] });
 
   return interaction.reply({ content: "Request sent!", ephemeral: true });
 });
@@ -356,14 +304,14 @@ client.on("interactionCreate", async interaction => {
 
   if (id.startsWith("accept_")) {
     const uid = id.replace("accept_", "");
-    const user = await client.users.fetch(uid).catch(() => {});
+    const user = await client.users.fetch(uid);
     await user.send("Your play request was **accepted**!").catch(() => {});
     return interaction.reply({ content: "Accepted.", ephemeral: true });
   }
 
   if (id.startsWith("decline_")) {
     const uid = id.replace("decline_", "");
-    const user = await client.users.fetch(uid).catch(() => {});
+    const user = await client.users.fetch(uid);
     await user.send("Your play request was **declined**.").catch(() => {});
     return interaction.reply({ content: "Declined.", ephemeral: true });
   }
@@ -396,6 +344,9 @@ client.on("interactionCreate", async interaction => {
   return interaction.showModal(modal);
 });
 
+// ================================================================
+// HANDLE PRIVATE LINK SUBMISSION
+// ================================================================
 client.on("interactionCreate", async interaction => {
   if (!interaction.isModalSubmit()) return;
   if (!interaction.customId.startsWith("privatelink_")) return;
