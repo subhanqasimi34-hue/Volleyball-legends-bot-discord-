@@ -27,8 +27,9 @@ const client = new Client({
   partials: [Partials.Message, Partials.Channel],
 });
 
-// Channel where the CREATE MATCH button should be posted
-const MATCHMAKING_CHANNEL_ID = "1441139756007161906";
+// IDs
+const MATCHMAKING_CHANNEL_ID = "1441139756007161906";     // #matchmaking
+const FIND_PLAYERS_CHANNEL_ID = "1441140684622008441";    // #find-players
 
 // Create the fixed matchmaking embed
 async function setupMatchmakingEmbed() {
@@ -67,7 +68,7 @@ client.once('ready', async () => {
 });
 
 // ---------------------------------------
-// FORM THAT OPENS WHEN "Create Match" IS CLICKED
+// OPEN FORM WHEN "Create Match" IS CLICKED
 // ---------------------------------------
 client.on('interactionCreate', async interaction => {
   if (!interaction.isButton()) return;
@@ -146,6 +147,62 @@ client.on('interactionCreate', async interaction => {
 
     await interaction.showModal(form);
   }
+});
+
+// ---------------------------------------
+// HANDLE THE FORM SUBMISSION + POST MATCH
+// ---------------------------------------
+client.on('interactionCreate', async interaction => {
+  if (!interaction.isModalSubmit()) return;
+  if (interaction.customId !== "match_form") return;
+
+  const level = interaction.fields.getTextInputValue("level");
+  const playstyle = interaction.fields.getTextInputValue("playstyle");
+  const ability = interaction.fields.getTextInputValue("ability");
+  const rank = interaction.fields.getTextInputValue("rank");
+  const region = interaction.fields.getTextInputValue("region");
+  const availability = interaction.fields.getTextInputValue("availability");
+  const vc = interaction.fields.getTextInputValue("vc");
+  const language = interaction.fields.getTextInputValue("language");
+  const notes = interaction.fields.getTextInputValue("notes");
+
+  const host = interaction.user;
+
+  const embed = new EmbedBuilder()
+    .setTitle("Volley Legends Match Found")
+    .setColor("Green")
+    .setDescription(`A player is looking for teammates!`)
+    .addFields(
+      { name: "Host", value: `${host}`, inline: false },
+      { name: "Level", value: level, inline: true },
+      { name: "Playstyle", value: playstyle, inline: true },
+      { name: "Ability", value: ability, inline: true },
+      { name: "Rank", value: rank, inline: true },
+      { name: "Region", value: region, inline: true },
+      { name: "Availability", value: availability, inline: true },
+      { name: "Voice Chat", value: vc, inline: true },
+      { name: "Language", value: language, inline: true },
+      { name: "Notes", value: notes || "None", inline: false }
+    )
+    .setFooter({ text: "Click below to request to play together." });
+
+  const buttonRow = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId("request_play")
+      .setLabel("Play Together")
+      .setStyle(ButtonStyle.Success)
+  );
+
+  const channel = client.channels.cache.get(FIND_PLAYERS_CHANNEL_ID);
+  if (!channel) return interaction.reply({ content: "Could not find post channel.", ephemeral: true });
+
+  await channel.send({
+    content: `${host}`,
+    embeds: [embed],
+    components: [buttonRow]
+  });
+
+  await interaction.reply({ content: "Your match has been created!", ephemeral: true });
 });
 
 client.login(process.env.BOT_TOKEN);
