@@ -1,4 +1,3 @@
-
 // Full new index.js with Option A formatting
 // User input formatting using "|" separators
 
@@ -193,26 +192,3 @@ client.on("interactionCreate", async (interaction) => {
 
   await interaction.reply({ content: "Your match has been created!", ephemeral: true });
 });
-
-// ---------------------------------------------------------------
-// Player requests → DM host
-// ---------------------------------------------------------------
-client.on("interactionCreate", async (interaction) => {
-  if (!interaction.isButton()) return;
-  if (!interaction.customId.startsWith("request_")) return;
-
-  const hostId = interaction.customId.replace("request_", "");
-  const host = await client.users.fetch(hostId).catch(() => {});
-  if (!host) return;
-
-  const requester = interaction.user;
-
-  const embed = new EmbedBuilder()
-    .setTitle("New Player Request")
-    .setDescription(`${requester} wants to play with you.`)
-    .setColor("Orange");
-
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`accept_${requester.id}`).setLabel("Accept").setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId(`decline_${requester.id}`).setLabel("Decline").setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId(`sendlink_${
