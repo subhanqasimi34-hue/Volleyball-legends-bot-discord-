@@ -1,5 +1,4 @@
-// Full new index.js with Option A formatting
-// User input formatting using "|" separators
+// indexV2.js – final version with "Unknown" fallback
 
 import {
   Client,
@@ -17,7 +16,7 @@ import {
 
 import express from "express";
 
-// Express server (Cloudflare Tunnel)
+// Express server for Cloudflare Tunnel
 const app = express();
 app.get("/", (req, res) => res.send("Volley Legends Bot running"));
 app.listen(3000, () => console.log("Express OK"));
@@ -35,13 +34,13 @@ const client = new Client({
 const MATCHMAKING_CHANNEL_ID = "1441139756007161906";
 const FIND_PLAYERS_CHANNEL_ID = "1441140684622008441";
 
-// Screenshot used in host DM
+// Screenshot for host DM
 const screenshot = new AttachmentBuilder(
   "/mnt/data/Screenshot 2025-11-20 190505.png"
 );
 
 // ---------------------------------------------------------------
-// Place matchmaking embed on startup
+// Place matchup embed
 // ---------------------------------------------------------------
 async function setupMatchmakingEmbed() {
   const channel = client.channels.cache.get(MATCHMAKING_CHANNEL_ID);
@@ -72,7 +71,7 @@ client.once("ready", async () => {
 });
 
 // ---------------------------------------------------------------
-// Create Match Modal (5 fields, Option A formatting)
+// Show Match Form
 // ---------------------------------------------------------------
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
@@ -125,7 +124,7 @@ client.on("interactionCreate", async (interaction) => {
 });
 
 // ---------------------------------------------------------------
-// Handle match submission
+// Handle Match Form Submit
 // ---------------------------------------------------------------
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isModalSubmit()) return;
@@ -133,23 +132,23 @@ client.on("interactionCreate", async (interaction) => {
 
   const host = interaction.user;
 
-  // Parse gameplay field: Level | Rank | Playstyle
-  const gameplayRaw = interaction.fields.getTextInputValue("gameplay");
-  const gameplayParts = gameplayRaw.split("|").map((p) => p.trim());
+  // Gameplay: Level | Rank | Playstyle
+  const rawGameplay = interaction.fields.getTextInputValue("gameplay");
+  const parts = rawGameplay.split("|").map(x => x.trim());
 
-  const levelPart = gameplayParts.find((p) => p.toLowerCase().startsWith("level")) || "Level: N/A";
-  const rankPart = gameplayParts.find((p) => p.toLowerCase().startsWith("rank")) || "Rank: N/A";
-  const playstylePart = gameplayParts.find((p) => p.toLowerCase().startsWith("playstyle")) || "Playstyle: N/A";
+  const level = parts[0] || "Unknown";
+  const rank = parts[1] || "Unknown";
+  const playstyle = parts[2] || "Unknown";
 
-  // Communication field: VC | Language
-  const commRaw = interaction.fields.getTextInputValue("communication");
-  const commParts = commRaw.split("|").map((p) => p.trim());
+  // Communication: VC | Language
+  const rawComm = interaction.fields.getTextInputValue("communication");
+  const comm = rawComm.split("|").map(x => x.trim());
 
-  const vcPart = commParts.find((p) => p.toLowerCase().startsWith("vc")) || "VC: N/A";
-  const langPart = commParts.find((p) => p.toLowerCase().startsWith("language")) || "Language: N/A";
+  const vc = comm[0] || "Unknown";
+  const language = comm[1] || "Unknown";
 
-  const ability = interaction.fields.getTextInputValue("ability");
-  const region = interaction.fields.getTextInputValue("region");
+  const ability = interaction.fields.getTextInputValue("ability") || "Unknown";
+  const region = interaction.fields.getTextInputValue("region") || "Unknown";
   const notes = interaction.fields.getTextInputValue("notes") || "None";
 
   const embed = new EmbedBuilder()
@@ -158,13 +157,13 @@ client.on("interactionCreate", async (interaction) => {
     .setColor("Green")
     .addFields(
       { name: "Host", value: `${host}`, inline: false },
-      { name: "Level", value: levelPart.replace("Level:", "").trim(), inline: true },
-      { name: "Rank", value: rankPart.replace("Rank:", "").trim(), inline: true },
-      { name: "Playstyle", value: playstylePart.replace("Playstyle:", "").trim(), inline: true },
+      { name: "Level", value: level, inline: true },
+      { name: "Rank", value: rank, inline: true },
+      { name: "Playstyle", value: playstyle, inline: true },
       { name: "Ability", value: ability, inline: true },
       { name: "Region", value: region, inline: true },
-      { name: "Voice Chat", value: vcPart.replace("VC:", "").trim(), inline: true },
-      { name: "Language", value: langPart.replace("Language:", "").trim(), inline: true },
+      { name: "Voice Chat", value: vc, inline: true },
+      { name: "Language", value: language, inline: true },
       { name: "Notes", value: notes, inline: false }
     );
 
@@ -179,7 +178,11 @@ client.on("interactionCreate", async (interaction) => {
   if (!channel)
     return interaction.reply({ content: "Posting channel not found.", ephemeral: true });
 
-  await channel.send({ content: `${host}`, embeds: [embed], components: [row] });
+  await channel.send({
+    content: `${host}`,
+    embeds: [embed],
+    components: [row]
+  });
 
   await host.send({
     embeds: [
@@ -194,7 +197,7 @@ client.on("interactionCreate", async (interaction) => {
 });
 
 // ---------------------------------------------------------------
-// Player requests → DM host
+// Player → Host request (DM)
 // ---------------------------------------------------------------
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
@@ -224,18 +227,14 @@ client.on("interactionCreate", async (interaction) => {
     files: [screenshot]
   }).catch(() => {});
 
-  await interaction.reply({
-    content: "Your request was sent!",
-    ephemeral: true
-  });
+  await interaction.reply({ content: "Your request was sent!", ephemeral: true });
 });
 
 // ---------------------------------------------------------------
-// ACCEPT / DECLINE HANDLER
+// Accept / Decline
 // ---------------------------------------------------------------
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
-
   if (
     !interaction.customId.startsWith("accept_") &&
     !interaction.customId.startsWith("decline_")
@@ -273,7 +272,7 @@ client.on("interactionCreate", async (interaction) => {
 });
 
 // ---------------------------------------------------------------
-// SEND PRIVATE SERVER LINK → MODAL
+// Send Private Server Link Modal
 // ---------------------------------------------------------------
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
@@ -297,7 +296,7 @@ client.on("interactionCreate", async (interaction) => {
 });
 
 // ---------------------------------------------------------------
-// SEND LINK MODAL SUBMIT
+// Send link (after modal submit)
 // ---------------------------------------------------------------
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isModalSubmit()) return;
@@ -325,12 +324,8 @@ client.on("interactionCreate", async (interaction) => {
     ]
   }).catch(() => {});
 
-  return interaction.reply({
-    content: "Private server link sent to player.",
-    ephemeral: true
-  });
+  return interaction.reply({ content: "Private server link sent to player.", ephemeral: true });
 });
 
 // ---------------------------------------------------------------
 client.login(process.env.BOT_TOKEN);
-
