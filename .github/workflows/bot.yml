@@ -18,7 +18,7 @@ jobs:
         with:
           node-version: 18
 
-      # Install packages
+      # Install dependencies
       - name: Install dependencies
         run: npm install
 
@@ -34,7 +34,7 @@ jobs:
         env:
           TUNNEL_TOKEN: ${{ secrets.TUNNEL_TOKEN }}
 
-      # Start the Discord bot (your bot file)
+      # Start the Discord bot
       - name: Start Discord Bot
         run: |
           node src/indexV2.js &
@@ -44,3 +44,4 @@ jobs:
           APP_ID: ${{ secrets.APP_ID }}
           PUBLIC_KEY: ${{ secrets.PUBLIC_KEY }}
           CF_TUNNEL_ID: ${{ secrets.CF_TUNNEL_ID }}
+          MONGO_URI: ${{ secrets.MONGO_URI }}
