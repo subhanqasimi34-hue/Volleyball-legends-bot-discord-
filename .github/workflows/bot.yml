@@ -1,12 +1,12 @@
-name: Bot
+name: Discord Bot 24/7
 
 on:
   workflow_dispatch:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
 
 jobs:
-  run:
+  run-bot:
     runs-on: ubuntu-latest
 
     steps:
@@ -18,22 +18,29 @@ jobs:
         with:
           node-version: 18
 
+      # Install packages
       - name: Install dependencies
         run: npm install
 
-      - name: Start Express + Discord Bot
-        run: npm start &
-        env:
-          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-
+      # Download cloudflared
       - name: Download cloudflared
         run: |
-          mkdir -p $HOME/cloudflared
-          wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -O $HOME/cloudflared/cloudflared
-          chmod +x $HOME/cloudflared/cloudflared
+          curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o cloudflared
+          chmod +x cloudflared
 
-      - name: Run Cloudflare Tunnel
-        run: |
-          $HOME/cloudflared/cloudflared tunnel run ${{ secrets.CLOUDFLARE_TUNNEL_ID }}
+      # Start the Cloudflare Tunnel
+      - name: Start Cloudflare Tunnel
+        run: ./cloudflared tunnel run --token "$TUNNEL_TOKEN" &
         env:
-          TUNNEL_TOKEN: ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}
+          TUNNEL_TOKEN: ${{ secrets.TUNNEL_TOKEN }}
+
+      # Start the Discord bot (your bot file)
+      - name: Start Discord Bot
+        run: |
+          node src/index.js &
+          sleep 999999
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          APP_ID: ${{ secrets.APP_ID }}
+          PUBLIC_KEY: ${{ secrets.PUBLIC_KEY }}
+          CF_TUNNEL_ID: ${{ secrets.CF_TUNNEL_ID }}
