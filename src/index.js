@@ -26,7 +26,7 @@ const client = new Client({
 });
 
 // 👉 NEW CODE HERE
-const MATCHMAKING_CHANNEL_ID = "YOUR_CHANNEL_ID_HERE";
+const MATCHMAKING_CHANNEL_ID = 1441139756007161906;
 
 async function setupMatchmakingEmbed() {
   const channel = client.channels.cache.get(MATCHMAKING_CHANNEL_ID);
@@ -60,3 +60,4 @@ client.once('ready', async () => {
 });
 
 client.login(process.env.BOT_TOKEN);
+
