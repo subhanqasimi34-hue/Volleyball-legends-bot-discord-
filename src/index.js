@@ -10,14 +10,14 @@ import {
   TextInputBuilder,
   TextInputStyle,
   AttachmentBuilder
-} from 'discord.js';
+} from "discord.js";
 
-import express from 'express';
+import express from "express";
 
-// Express server (needed for Cloudflare Tunnel)
+// Express server (for Cloudflare Tunnel)
 const app = express();
-app.get('/', (req, res) => res.send('Volley Legends Bot running'));
-app.listen(3000, () => console.log('Express OK'));
+app.get("/", (req, res) => res.send("Volley Legends Bot running"));
+app.listen(3000, () => console.log("Express OK"));
 
 const client = new Client({
   intents: [
@@ -25,22 +25,28 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.DirectMessages
   ],
-  partials: [Partials.Message, Partials.Channel, Partials.User]
+  partials: [Partials.Channel, Partials.Message, Partials.User]
 });
 
 // CHANNELS
 const MATCHMAKING_CHANNEL_ID = "1441139756007161906";
 const FIND_PLAYERS_CHANNEL_ID = "1441140684622008441";
 
-// LOAD SCREENSHOT
-const screenshot = new AttachmentBuilder("/mnt/data/Screenshot 2025-11-20 190505.png");
+// SCREENSHOT (host DM attachment)
+const screenshot = new AttachmentBuilder(
+  "/mnt/data/Screenshot 2025-11-20 190505.png"
+);
 
 // ---------------------------------------------------------------
-// POST FIXED MATCHMAKING EMBED
+// POST MAIN MATCHMAKING EMBED
 // ---------------------------------------------------------------
 async function setupMatchmakingEmbed() {
   const channel = client.channels.cache.get(MATCHMAKING_CHANNEL_ID);
   if (!channel) return console.log("Matchmaking channel not found.");
+
+  // delete old messages
+  const messages = await channel.messages.fetch({ limit: 50 }).catch(() => {});
+  if (messages) channel.bulkDelete(messages).catch(() => {});
 
   const embed = new EmbedBuilder()
     .setTitle("Volley Legends Matchmaking")
@@ -54,10 +60,8 @@ async function setupMatchmakingEmbed() {
       .setStyle(ButtonStyle.Primary)
   );
 
-  const messages = await channel.messages.fetch({ limit: 50 }).catch(() => {});
-  if (messages) channel.bulkDelete(messages).catch(() => {});
-
   await channel.send({ embeds: [embed], components: [row] });
+
   console.log("Matchmaking embed posted.");
 }
 
@@ -112,7 +116,7 @@ client.on("interactionCreate", async (interaction) => {
 });
 
 // ---------------------------------------------------------------
-// HANDLE MATCH CREATION
+// FORM SUBMIT → POST MATCH
 // ---------------------------------------------------------------
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isModalSubmit()) return;
@@ -151,7 +155,7 @@ client.on("interactionCreate", async (interaction) => {
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setCustomId(`request_play_${host.id}`)
+      .setCustomId(`request_${host.id}`)
       .setLabel("Play Together")
       .setStyle(ButtonStyle.Success)
   );
@@ -159,40 +163,47 @@ client.on("interactionCreate", async (interaction) => {
   const channel = client.channels.cache.get(FIND_PLAYERS_CHANNEL_ID);
   if (!channel)
     return interaction.reply({
-      content: "Could not find posting channel.",
-      ephemeral: true,
+      content: "Posting channel not found.",
+      ephemeral: true
     });
 
   await channel.send({
     content: `${host}`,
     embeds: [embed],
-    components: [row],
+    components: [row]
   });
 
-  // DM TO PLAYER
-  await host.send({
-    embeds: [
-      new EmbedBuilder()
-        .setTitle("Match Created")
-        .setDescription("Your Volley Legends match has been created.\nPlayers can now request to play with you.")
-        .setColor("Blue")
-    ]
-  }).catch(() => {});
+  // player DM
+  await host
+    .send({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle("Match Created")
+          .setDescription(
+            "Your match is live! Players can now request to play with you."
+          )
+          .setColor("Blue")
+      ]
+    })
+    .catch(() => {});
 
-  await interaction.reply({ content: "Your match has been created!", ephemeral: true });
-
+  await interaction.reply({
+    content: "Your match has been created!",
+    ephemeral: true
+  });
 });
 
 // ---------------------------------------------------------------
-// PLAYER REQUEST → SEND DM TO HOST
+// PLAYER REQUEST → DM HOST
 // ---------------------------------------------------------------
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
+  if (!interaction.customId.startsWith("request_")) return;
 
-  if (!interaction.customId.startsWith("request_play_")) return;
+  const hostId = interaction.customId.replace("request_", "");
+  const host = await client.users.fetch(hostId).catch(() => {});
+  if (!host) return;
 
-  const hostId = interaction.customId.replace("request_play_", "");
-  const host = await client.users.fetch(hostId);
   const requester = interaction.user;
 
   const embed = new EmbedBuilder()
@@ -212,93 +223,119 @@ client.on("interactionCreate", async (interaction) => {
       .setStyle(ButtonStyle.Danger),
 
     new ButtonBuilder()
-      .setCustomId(`send_link_${requester.id}`)
+      .setCustomId(`sendlink_${requester.id}`)
       .setLabel("Send Private Server Link")
       .setStyle(ButtonStyle.Primary)
   );
 
-  await host.send({
-    content: "You received a new match request!",
-    embeds: [embed],
-    components: [row],
-    files: [screenshot]
-  }).catch(() => {});
+  await host
+    .send({
+      content: "You received a new match request!",
+      embeds: [embed],
+      components: [row],
+      files: [screenshot]
+    })
+    .catch(() => {});
 
-  await interaction.reply({ content: "Your request was sent!", ephemeral: true });
+  await interaction.reply({
+    content: "Your request was sent!",
+    ephemeral: true
+  });
 });
 
 // ---------------------------------------------------------------
-// ACCEPT / DECLINE
+// ACCEPT / DECLINE HANDLER (ISOLATED)
 // ---------------------------------------------------------------
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
 
+  if (
+    !interaction.customId.startsWith("accept_") &&
+    !interaction.customId.startsWith("decline_")
+  )
+    return;
+
   const [action, targetId] = interaction.customId.split("_");
-  const target = await client.users.fetch(targetId);
+  const target = await client.users.fetch(targetId).catch(() => {});
+  if (!target) return;
 
   if (action === "accept") {
-    await target.send({
-      embeds: [
-        new EmbedBuilder()
-          .setTitle("Accepted!")
-          .setDescription("The host accepted your request. They will send you a private server link.")
-          .setColor("Green")
-      ]
-    }).catch(() => {});
+    await target
+      .send({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle("Accepted!")
+            .setDescription(
+              "The host accepted your request. Wait for the private server link."
+            )
+            .setColor("Green")
+        ]
+      })
+      .catch(() => {});
 
-    return interaction.reply({ content: "Player accepted.", ephemeral: true });
+    return interaction.reply({
+      content: "Player accepted.",
+      ephemeral: true
+    });
   }
 
   if (action === "decline") {
-    await target.send({
-      embeds: [
-        new EmbedBuilder()
-          .setTitle("Declined")
-          .setDescription("The host declined your request.")
-          .setColor("Red")
-      ]
-    }).catch(() => {});
+    await target
+      .send({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle("Declined")
+            .setDescription("The host declined your request.")
+            .setColor("Red")
+        ]
+      })
+      .catch(() => {});
 
-    return interaction.reply({ content: "Player declined.", ephemeral: true });
+    return interaction.reply({
+      content: "Player declined.",
+      ephemeral: true
+    });
   }
-
 });
 
 // ---------------------------------------------------------------
-// PRIVATE SERVER LINK MODAL
+// SEND PRIVATE SERVER LINK → MODAL
 // ---------------------------------------------------------------
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
-  if (!interaction.customId.startsWith("send_link_")) return;
+  if (!interaction.customId.startsWith("sendlink_")) return;
 
-  const targetId = interaction.customId.replace("send_link_", "");
+  const targetId = interaction.customId.replace("sendlink_", "");
 
   const modal = new ModalBuilder()
-    .setCustomId(`link_modal_${targetId}`)
+    .setCustomId(`sendlinkmodal_${targetId}`)
     .setTitle("Send Private Server Link");
 
-  const linkField = new TextInputBuilder()
-    .setCustomId("server_link")
+  const input = new TextInputBuilder()
+    .setCustomId("serverlink")
     .setLabel("Roblox Private Server Link")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(true);
+    .setPlaceholder("https://www.roblox.com/...")
+    .setRequired(true)
+    .setStyle(TextInputStyle.Short);
 
-  modal.addComponents(new ActionRowBuilder().addComponents(linkField));
+  const row = new ActionRowBuilder().addComponents(input);
+  modal.addComponents(row);
 
   return interaction.showModal(modal);
 });
 
 // ---------------------------------------------------------------
-// HANDLE PRIVATE SERVER LINK
+// SEND LINK MODAL SUBMIT
 // ---------------------------------------------------------------
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isModalSubmit()) return;
-  if (!interaction.customId.startsWith("link_modal_")) return;
+  if (!interaction.customId.startsWith("sendlinkmodal_")) return;
 
-  const targetId = interaction.customId.replace("link_modal_", "");
-  const target = await client.users.fetch(targetId);
+  const targetId = interaction.customId.replace("sendlinkmodal_", "");
+  const target = await client.users.fetch(targetId).catch(() => {});
+  if (!target) return;
 
-  const link = interaction.fields.getTextInputValue("server_link");
+  const link = interaction.fields.getTextInputValue("serverlink");
 
   if (!link.startsWith("https://www.roblox.com/")) {
     return interaction.reply({
@@ -307,18 +344,20 @@ client.on("interactionCreate", async (interaction) => {
     });
   }
 
-  await target.send({
-    embeds: [
-      new EmbedBuilder()
-        .setTitle("Private Server Link")
-        .setDescription(`Here is your private server link:\n${link}`)
-        .setColor("Blue")
-    ]
-  }).catch(() => {});
+  await target
+    .send({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle("Private Server Link")
+          .setDescription(`Here is your private server link:\n${link}`)
+          .setColor("Blue")
+      ]
+    })
+    .catch(() => {});
 
   return interaction.reply({
     content: "Private server link sent to player.",
-    ephemeral: true,
+    ephemeral: true
   });
 });
 
