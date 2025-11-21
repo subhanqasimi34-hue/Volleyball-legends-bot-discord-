@@ -86,6 +86,7 @@ const parseCommunication = t => {
   return { vc: p[0] || "Unknown", language: p[1] || "Unknown" };
 };
 
+// RESET CHANNEL
 async function resetMatchmakingChannel() {
   const ch = client.channels.cache.get(MATCHMAKING_CHANNEL_ID);
   if (!ch) return;
@@ -93,43 +94,24 @@ async function resetMatchmakingChannel() {
   const msgs = await ch.messages.fetch({ limit: 100 }).catch(() => {});
   if (msgs) await ch.bulkDelete(msgs).catch(() => {});
 
-  const modeColors = {
-      "2v2": "#22C55E",
-      "3v3": "#3B82F6",
-      "4v4": "#8B5CF6"
-    };
+  const embed = new EmbedBuilder()
+    .setColor("#22C55E")
+    .setTitle("Volley Legends Matchmaking")
+    .setDescription("Click **Create Match** to start we made the bot only for you and your saftey | many scams links etc. we did add a Security Link proofer!");
 
-    const embed = new EmbedBuilder()
-      .setColor(modeColors[mode] || "#22C55E")
-      .setAuthor({
-        name: `${user.username}'s Match`,
-        iconURL: user.displayAvatarURL({ size: 256 })
-      })
-      .setTitle(`${mode.toUpperCase()} Match Created`)
-      .setDescription(
-`╔════════ MATCH ════════╗
-🏐 **Mode:** ${mode.toUpperCase()}
-👤 **Host:** ${user}
-╚════════════════════════╝
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId("please click here do creat a match")
+      .setLabel("Please click here do Creat a match")
+      .setStyle(ButtonStyle.Success)
+  );
 
-🎯 **Gameplay**
-Level: ${gp.level}
-Rank: ${gp.rank}
-Playstyle: ${gp.playstyle}
+  await ch.send({ embeds: [embed], components: [row] });
+}
 
-💥 **Ability**
-${ability}
-
-🌍 **Region**
-${region}
-
-🎙 **Communication**
-VC: ${cm.vc}
-Language: ${cm.language}
-
-📝 **Notes**
-${notes || "None"}`
-    );;
+// READY
+client.once("ready", () => {
+  console.log(`Logged in as ${client.user.tag}`);
   resetMatchmakingChannel();
 });
 
@@ -142,16 +124,16 @@ async function checkHostCooldown(id) {
   return Math.ceil((300000 - diff) / 60000);
 }
 
-// STEP 1: PICK MODE
+// STEP 1 — PICK MODE
 client.on("interactionCreate", async i => {
   if (!i.isButton() || i.customId !== "create_match") return;
 
   const cd = await checkHostCooldown(i.user.id);
-  if (cd > 0) return i.reply({ content: `Wait ${cd} min.`, ephemeral: true });
+  if (cd > 0) return i.reply({ content: `Wait **${cd} min**.`, ephemeral: true });
 
   const embed = new EmbedBuilder()
     .setColor("#22C55E")
-    .setTitle("Select Match Mode")
+    .setTitle("Select which Match Mode you want Play!")
     .setDescription("Choose your team size.");
 
   const row = new ActionRowBuilder().addComponents(
@@ -163,7 +145,7 @@ client.on("interactionCreate", async i => {
   return i.reply({ embeds: [embed], components: [row], ephemeral: true });
 });
 
-// STEP 2: AFTER MODE SELECT, CHECK REUSE
+// STEP 2 — CHECK REUSE
 client.on("interactionCreate", async i => {
   if (!i.isButton() || !i.customId.startsWith("mode_")) return;
 
@@ -174,8 +156,8 @@ client.on("interactionCreate", async i => {
 
   const embed = new EmbedBuilder()
     .setColor("#22C55E")
-    .setTitle("Reuse last settings?")
-    .setDescription("Want to autofill your last settings?");
+    .setTitle("Last Layouth?")
+    .setDescription("Do you want to autofill your last match settings?");
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`reuse_yes_${mode}`).setLabel("Yes").setStyle(ButtonStyle.Success),
@@ -185,7 +167,7 @@ client.on("interactionCreate", async i => {
   return i.reply({ embeds: [embed], components: [row], ephemeral: true });
 });
 
-// STEP 3: OPEN MODAL
+// STEP 3 — OPEN FORM
 function openModal(i, autofill, data, mode) {
   const m = new ModalBuilder().setCustomId(`match_form_${mode}`).setTitle(`Create ${mode.toUpperCase()} Match`);
 
@@ -196,8 +178,17 @@ function openModal(i, autofill, data, mode) {
     ["comm", "VC | Language", true, TextInputStyle.Short],
     ["notes", "Notes", false, TextInputStyle.Paragraph]
   ].map(([id, label, req, style]) => {
-    const ti = new TextInputBuilder().setCustomId(id).setLabel(label).setRequired(req).setStyle(style);
-    if (autofill && data) ti.setValue(id === "comm" ? data.communication : data[id] || "");
+    const ti = new TextInputBuilder()
+      .setCustomId(id)
+      .setLabel(label)
+      .setRequired(req)
+      .setStyle(style);
+
+    if (autofill && data) {
+      const v = id === "comm" ? data.communication : data[id];
+      if (v) ti.setValue(v);
+    }
+
     return new ActionRowBuilder().addComponents(ti);
   });
 
@@ -205,23 +196,7 @@ function openModal(i, autofill, data, mode) {
   return i.showModal(m);
 }
 
-// REUSE BUTTONS
-client.on("interactionCreate", async i => {
-  if (!i.isButton()) return;
-
-  if (i.customId.startsWith("reuse_yes_")) {
-    const mode = i.customId.replace("reuse_yes_", "");
-    const stats = await HostStats.findOne({ userId: i.user.id });
-    return openModal(i, true, stats, mode);
-  }
-
-  if (i.customId.startsWith("reuse_no_")) {
-    const mode = i.customId.replace("reuse_no_", "");
-    return openModal(i, false, null, mode);
-  }
-});
-
-// SUBMIT FORM
+// STEP 4 — SUBMIT FORM
 client.on("interactionCreate", async i => {
   if (!i.isModalSubmit() || !i.customId.startsWith("match_form_")) return;
 
@@ -246,25 +221,45 @@ client.on("interactionCreate", async i => {
   await RequestCounter.findOneAndUpdate({ hostId: user.id }, { count: 0 }, { upsert: true });
   await HostCooldown.findOneAndUpdate({ userId: user.id }, { timestamp: Date.now() }, { upsert: true });
 
+  // MODE COLORS
+  const modeColors = {
+    "2v2": "#22C55E",
+    "3v3": "#3B82F6",
+    "4v4": "#8B5CF6"
+  };
+
+  // MATCH EMBED
   const embed = new EmbedBuilder()
-    .setColor("#22C55E")
+    .setColor(modeColors[mode] || "#22C55E")
+    .setAuthor({
+      name: `${user.username}'s Match`,
+      iconURL: user.displayAvatarURL({ size: 256 })
+    })
     .setTitle(`${mode.toUpperCase()} Match Created`)
     .setDescription(
-`Mode: **${mode.toUpperCase()}**
-Host: ${user}
+`╔════════ MATCH ════════╗
+🏐 **Mode:** ${mode.toUpperCase()}
+👤 **Host:** ${user}
+╚════════════════════════╝
 
+🎯 **Gameplay**
 Level: ${gp.level}
 Rank: ${gp.rank}
 Playstyle: ${gp.playstyle}
 
-Ability: ${ability}
-Region: ${region}
+💥 **Ability**
+${ability}
+
+🌍 **Region**
+${region}
+
+🎙 **Communication**
 VC: ${cm.vc}
 Language: ${cm.language}
 
-Notes:
-${notes || "None"}`
-    );
+**Looking for?**
+${notes || "None"}`);
+
 
   const btn = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
@@ -274,14 +269,13 @@ ${notes || "None"}`
   );
 
   const ch = client.channels.cache.get(FIND_PLAYERS_CHANNEL_ID);
-
   const msg = await ch.send({
     content: `${user}`,
     embeds: [embed],
     components: [btn]
   });
 
-  // Auto-expire button after 10 minutes
+  // AUTO-EXPIRE BUTTON AFTER 10 MINUTES
   setTimeout(async () => {
     try {
       const disabledRow = new ActionRowBuilder().addComponents(
@@ -296,11 +290,8 @@ ${notes || "None"}`
         components: [disabledRow],
         content: `${user} — Match expired`
       });
-    } catch (err) {
-      console.log("Failed to disable button:", err);
-    }
-  }, 600000); // 10 minutes
-
+    } catch {}
+  }, 600000);
 
   return i.reply({ content: "Match created!", ephemeral: true });
 });
@@ -331,20 +322,19 @@ client.on("interactionCreate", async i => {
 
   const embed = new EmbedBuilder()
     .setColor("#22C55E")
-    .setTitle("New Play Request")
+    .setTitle("New Play Request is here")
     .setDescription(
 `Player: ${requester}
 Requests: ${counter.count}
 
-Please enter the Volleyball Legends Privat Server.
+Please enter the Volleyball Legends Privat Server link!
 
-${matchEmbed.description}`
-    );
+${matchEmbed.description}`);
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`link_${requester.id}`)
-      .setLabel("Press here and paste your Volleyball Legends Privat Server link")
+      .setLabel("Send Private Server Link")
       .setStyle(ButtonStyle.Primary)
   );
 
@@ -352,36 +342,49 @@ ${matchEmbed.description}`
   return i.reply({ content: "Request sent!", ephemeral: true });
 });
 
-// PRIVATE LINK
+// SEND LINK MODAL
 client.on("interactionCreate", async i => {
   if (!i.isButton() || !i.customId.startsWith("link_")) return;
 
   const id = i.customId.replace("link_", "");
 
-  const modal = new ModalBuilder().setCustomId(`sendlink_${id}`).setTitle("Press here and paste your Volleyball Legends Privat Server link");
-  modal.addComponents(new ActionRowBuilder().addComponents(
-    new TextInputBuilder().setCustomId("link").setLabel("Please enter the Volleyball Legends Privat Server").setRequired(true).setStyle(TextInputStyle.Short)
-  ));
+  const modal = new ModalBuilder()
+    .setCustomId(`sendlink_${id}`)
+    .setTitle("Private Server Link")
+    .addComponents(
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId("link")
+          .setLabel("Roblox Private Server Link")
+          .setRequired(true)
+          .setStyle(TextInputStyle.Short)
+      )
+    );
 
   return i.showModal(modal);
 });
 
+// SEND LINK SUBMISSION
 client.on("interactionCreate", async i => {
   if (!i.isModalSubmit() || !i.customId.startsWith("sendlink_")) return;
 
   const id = i.customId.replace("sendlink_", "");
-  const link = i.fields.getTextInputValue("link").trim();
+  const link = i.fields.getTextInputValue("link");
 
   const shareRegex = /^https:\/\/www\.roblox\.com\/share\?code=[A-Za-z0-9]+&type=Server$/;
-  const vipRegex = /^https:\/\/www\.roblox\.com\/games\/[0-9]+\/[A-Za-z0-9_-]+\?privateServerLinkCode=[A-Za-z0-9_-]+$/;
+  const vipRegex = /^https:\/\/www\.roblox\.com\/games\/[0-9]+\/[^/?]+\?privateServerLinkCode=[A-Za-z0-9_-]+$/;
 
-  if (!link.startsWith("https://www.roblox.com")) return i.reply({ content: "Roblox links only.", ephemeral: true });
-  if (!shareRegex.test(link) && !vipRegex.test(link)) return i.reply({ content: "Invalid private server link.", ephemeral: true });
+  if (!link.startsWith("https://www.roblox.com"))
+    return i.reply({ content: "Roblox links only.", ephemeral: true });
+
+  if (!shareRegex.test(link) && !vipRegex.test(link))
+    return i.reply({ content: "Invalid private server link format.", ephemeral: true });
 
   const user = await client.users.fetch(id).catch(() => {});
-  if (user) await user.send(`The host as sent the link: ${link}`).catch(() => {});
+  if (user) user.send(`The host did sent the Volleyball Legends Privat Link!:\n${link}`).catch(() => {});
 
-  return i.reply({ content: "Private link as been sent!", ephemeral: true });
+  return i.reply({ content: "Private server link sent!", ephemeral: true });
 });
 
+// LOGIN
 client.login(process.env.BOT_TOKEN);
