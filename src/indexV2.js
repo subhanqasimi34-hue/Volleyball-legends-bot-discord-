@@ -321,7 +321,7 @@ client.on("interactionCreate", async i => {
   const { vc, language } = parseCommunication(comm);
 
   const embed = new EmbedBuilder()
-    .setColor("#2bff00ff")
+    .setColor("#22C55E")
     .setTitle("🔔 New Play Request")
     .setDescription(
       `👤 **Player:** <@${requester.id}>\n` +
@@ -401,7 +401,7 @@ client.on("interactionCreate", async i => {
     );
   } else {
     if (active.players.length >= 3) {
-      return i.reply({ ephemeral: true, content: "❌ Max players reached only (3)." });
+      return i.reply({ ephemeral: true, content: "❌ Max players reached (3)." });
     }
 
     await channel.permissionOverwrites.edit(playerId, {
