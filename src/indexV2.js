@@ -1,7 +1,7 @@
 // ================================================================
 // indexV6.js – Volley Legends Matchmaking Bot (Final Optimized Edition)
 // Clean Unicode labels, DM requests, 1-minute DM auto-delete,
-// Strong Roblox VIP + Share link validation, only Volley Legends.
+// Strong Roblox VIP + Share validation ONLY for Volley Legends.
 // ================================================================
 
 import {
@@ -96,7 +96,7 @@ const parseCommunication = t => {
   };
 };
 
-// RESET MATCHMAKING CHANNEL
+// RESET CHANNEL
 async function resetMatchmakingChannel() {
   const ch = client.channels.cache.get(MATCHMAKING_CHANNEL_ID);
   if (!ch) return;
@@ -133,15 +133,15 @@ async function checkHostCooldown(id) {
   return Math.ceil((300000 - diff) / 60000);
 }
 
-// CREATE MATCH BUTTON
+// CREATE MATCH
 client.on("interactionCreate", async i => {
   if (!i.isButton() || i.customId !== "create_match") return;
 
   const cd = await checkHostCooldown(i.user.id);
   if (cd > 0) {
-    const s = await i.user.send(`You must wait **${cd} min** before creating again.`);
-    setTimeout(() => s.delete().catch(() => {}), 60000);
-    return;
+    const m = await i.user.send(`You must wait **${cd} min** before creating again.`);
+    setTimeout(() => m.delete().catch(() => {}), 60000);
+    return i.reply({ content: "Cooldown active.", ephemeral: true });
   }
 
   const stats = await HostStats.findOne({ userId: i.user.id });
@@ -150,14 +150,14 @@ client.on("interactionCreate", async i => {
   const embed = new EmbedBuilder()
     .setColor("#22C55E")
     .setTitle("Reuse previous settings?")
-    .setDescription("Do you want to autofill your last match settings?");
+    .setDescription("Do you want to autofill from your last match?");
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId("reuse_yes").setLabel("Yes").setStyle(ButtonStyle.Success),
     new ButtonBuilder().setCustomId("reuse_no").setLabel("No").setStyle(ButtonStyle.Secondary)
   );
 
-  await i.reply({ embeds: [embed], components: [row], ephemeral: true });
+  return i.reply({ embeds: [embed], components: [row], ephemeral: true });
 });
 
 // OPEN MODAL
@@ -170,9 +170,7 @@ function openModal(i, autofill, data) {
     ["region", "Region", true, TextInputStyle.Short],
     ["comm", "VC | Language", true, TextInputStyle.Short],
     ["notes", "Notes", false, TextInputStyle.Paragraph]
-  ];
-
-  const rows = fields.map(([id, label, req, style]) => {
+  ].map(([id, label, req, style]) => {
     const ti = new TextInputBuilder()
       .setCustomId(id)
       .setLabel(label)
@@ -180,15 +178,13 @@ function openModal(i, autofill, data) {
       .setStyle(style);
 
     if (autofill && data) {
-      const key = id === "comm" ? "communication" : id;
-      if (data[key]) ti.setValue(data[key]);
+      const val = id === "comm" ? data.communication : data[id];
+      if (val) ti.setValue(val);
     }
-
     return new ActionRowBuilder().addComponents(ti);
   });
 
-  m.addComponents(...rows);
-
+  m.addComponents(...fields);
   return i.showModal(m);
 }
 
@@ -206,13 +202,13 @@ client.on("interactionCreate", async i => {
 client.on("interactionCreate", async i => {
   if (!i.isModalSubmit() || i.customId !== "match_form") return;
 
+  const user = i.user;
   const gameplay = i.fields.getTextInputValue("gameplay");
   const ability = i.fields.getTextInputValue("ability");
   const region = i.fields.getTextInputValue("region");
   const comm = i.fields.getTextInputValue("comm");
   const notes = i.fields.getTextInputValue("notes");
 
-  const user = i.user;
   const gp = parseGameplay(gameplay);
   const cm = parseCommunication(comm);
 
@@ -221,13 +217,7 @@ client.on("interactionCreate", async i => {
     { gameplay, ability, region, communication: comm, notes },
     { upsert: true }
   );
-
-  await RequestCounter.findOneAndUpdate(
-    { hostId: user.id },
-    { count: 0 },
-    { upsert: true }
-  );
-
+  await RequestCounter.findOneAndUpdate({ hostId: user.id }, { count: 0 }, { upsert: true });
   await HostCooldown.findOneAndUpdate(
     { userId: user.id },
     { timestamp: Date.now() },
@@ -250,18 +240,21 @@ client.on("interactionCreate", async i => {
 ʟᴀɴɢᴜᴀɢᴇ: ${cm.language}
 
 ɴᴏᴛᴇs:
-${notes || "None"}`
+${notes || "None"}
+`
     );
 
   const btn = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`req_${user.id}`).setLabel("Play Together").setStyle(ButtonStyle.Success)
+    new ButtonBuilder()
+      .setCustomId(`req_${user.id}`)
+      .setLabel("Play Together")
+      .setStyle(ButtonStyle.Success)
   );
 
   const ch = client.channels.cache.get(FIND_PLAYERS_CHANNEL_ID);
   await ch.send({ content: `${user}`, embeds: [embed], components: [btn] });
 
-  const s = await user.send("Match created!");
-  setTimeout(() => s.delete().catch(() => {}), 60000);
+  return i.reply({ content: "Match created!", ephemeral: true });
 });
 
 // PLAYER REQUEST
@@ -297,7 +290,8 @@ client.on("interactionCreate", async i => {
 
 Please send the Discord private server. It's ineeded!
 
-${matchEmbed.description}`
+${matchEmbed.description}
+`
     );
 
   const row = new ActionRowBuilder().addComponents(
@@ -308,8 +302,7 @@ ${matchEmbed.description}`
 
   await host.send({ embeds: [embed], components: [row] }).catch(() => {});
 
-  const s = await requester.send("Request sent!");
-  setTimeout(() => s.delete().catch(() => {}), 60000);
+  return i.reply({ content: "Request sent!", ephemeral: true });
 });
 
 // ACCEPT / DECLINE
@@ -320,16 +313,14 @@ client.on("interactionCreate", async i => {
     const id = i.customId.replace("accept_", "");
     const u = await client.users.fetch(id).catch(() => {});
     if (u) u.send("Your request was accepted.").catch(() => {});
-    const m = await i.user.send("Accepted.");
-    setTimeout(() => m.delete().catch(() => {}), 60000);
+    return i.reply({ content: "Accepted.", ephemeral: true });
   }
 
   if (i.customId.startsWith("decline_")) {
     const id = i.customId.replace("decline_", "");
     const u = await client.users.fetch(id).catch(() => {});
     if (u) u.send("Your request was declined.").catch(() => {});
-    const m = await i.user.send("Declined.");
-    setTimeout(() => m.delete().catch(() => {}), 60000);
+    return i.reply({ content: "Declined.", ephemeral: true });
   }
 });
 
@@ -366,30 +357,32 @@ client.on("interactionCreate", async i => {
   // Volley Legends Place ID
   const GAME_ID = "17242062041";
 
-  // VIP Private server link
-  const vipRegex =
-    new RegExp(`^https:\\/\\/www\\.roblox\\.com\\/games\\/${GAME_ID}\\/[^\\/?]+\\?privateServerLinkCode=[A-Za-z0-9_-]+$`);
+  // VIP Server (must match correct game ID)
+  const vipRegex = new RegExp(
+    `^https:\\/\\/www\\.roblox\\.com\\/games\\/${GAME_ID}\\/[^\\/?]+\\?privateServerLinkCode=[A-Za-z0-9_-]+$`
+  );
 
-  // Share server link
+  // Share Server
   const shareRegex =
     /^https:\/\/www\.roblox\.com\/share\?code=[A-Za-z0-9]+&type=Server$/;
 
   if (!vipRegex.test(link) && !shareRegex.test(link)) {
-    const warn = await i.user.send(
-      "Invalid link.\n\n" +
-      "**Only Volley Legends private servers are allowed.**\n\n" +
-      "VIP:\nhttps://www.roblox.com/games/17242062041/NAME?privateServerLinkCode=XXXX\n\n" +
-      "Share:\nhttps://www.roblox.com/share?code=XXXX&type=Server"
-    );
-    setTimeout(() => warn.delete().catch(() => {}), 60000);
-    return;
+    return i.reply({
+      content:
+        "❌ Invalid link.\n\n" +
+        "**Only Volley Legends private servers are allowed.**\n\n" +
+        "VIP:\nhttps://www.roblox.com/games/" + GAME_ID + "/NAME?privateServerLinkCode=XXXX\n\n" +
+        "Share:\nhttps://www.roblox.com/share?code=XXXX&type=Server",
+      ephemeral: true
+    });
   }
 
   const user = await client.users.fetch(id).catch(() => {});
-  if (user) user.send(`Here is your private server link:\n${link}`).catch(() => {});
+  if (user) {
+    await user.send(`Here is your private server link:\n${link}`).catch(() => {});
+  }
 
-  const sent = await i.user.send("Private server link sent!");
-  setTimeout(() => sent.delete().catch(() => {}), 60000);
+  return i.reply({ content: "Private server link sent!", ephemeral: true });
 });
 
 // LOGIN
