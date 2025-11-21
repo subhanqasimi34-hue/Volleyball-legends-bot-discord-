@@ -317,26 +317,35 @@ client.on("interactionCreate", async i => {
   const id = i.customId.replace("sendlink_", "");
   const link = i.fields.getTextInputValue("link");
 
- // Accept both VIP links AND share links
-const vipRegex =
-  /^https:\/\/www\.roblox\.com\/games\/\d+\/[^\/\?]+(\?privateServerLinkCode=[A-Za-z0-9_-]+)$/;
+  // Volley Legends Place ID (only this game allowed)
+  const GAME_ID = "17242062041";
 
-const shareRegex =
-  /^https:\/\/www\.roblox\.com\/share\?code=[A-Za-z0-9]+&type=Server$/;
+  // Share link (game-agnostic but Roblox auto-restricts it)
+  const shareRegex =
+    /^https:\/\/www\.roblox\.com\/share\?code=[A-Za-z0-9]+&type=Server$/;
 
-if (!vipRegex.test(link) && !shareRegex.test(link)) {
-  const warn = await i.user.send("❌ Invalid link.\nAccepted formats:\n ...");
-setTimeout(() => warn.delete().catch(() => {}), 60000);
-  );
-}
+  // Validate links
+  if (!vipRegex.test(link) && !shareRegex.test(link)) {
+    const warn = await i.user.send(
+      "Invalid link.\n\n" +
+      "**Only Volley Legends private servers are allowed.**\n\n" +
+      "Accepted formats:\n\n" +
+      "Only Volleyball Legends links!:\n" +
+      "https://www.roblox.com/share?code=XXXX&type=Server"
+    );
+    setTimeout(() => warn.delete().catch(() => {}), 60000);
+    return;
+  }
 
-
+  // Send valid link to requested player
   const user = await client.users.fetch(id).catch(() => {});
   if (user) user.send(`Here is your private server link:\n${link}`).catch(() => {});
 
-const sent = await i.user.send(`Private server link sent!`);
-setTimeout(() => sent.delete().catch(() => {}), 60000);
+  const sent = await i.user.send("Private server link sent!");
+  setTimeout(() => sent.delete().catch(() => {}), 60000);
 });
+
+
 
 // LOGIN
 client.login(process.env.BOT_TOKEN);
