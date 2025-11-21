@@ -1,7 +1,8 @@
 // ================================================================
 // indexV6.js – Volley Legends Matchmaking Bot (Final Optimized Edition)
 // Clean Unicode labels, DM requests, 1-minute DM auto-delete,
-// Strong Roblox VIP + Share validation ONLY for Volley Legends.
+// Strong Roblox Share validation ONLY for Volley Legends.
+// VIP-Server komplett entfernt.
 // ================================================================
 
 import {
@@ -139,8 +140,9 @@ client.on("interactionCreate", async i => {
 
   const cd = await checkHostCooldown(i.user.id);
   if (cd > 0) {
-    const m = await i.user.send(`You must wait **${cd} min** before creating again.`);
-    setTimeout(() => m.delete().catch(() => {}), 60000);
+    const m = await i.user.send(`You must wait **${cd} min** before creating again.`)
+      .catch(() => {});
+    if (m) setTimeout(() => m.delete().catch(() => {}), 60000);
     return i.reply({ content: "Cooldown active.", ephemeral: true });
   }
 
@@ -288,7 +290,7 @@ client.on("interactionCreate", async i => {
 `ᴘʟᴀʏᴇʀ: ${requester}
 ʀᴇǫᴜᴇsᴛs: ${counter.count}
 
-Please send the Discord private server. It's ineeded!
+Please send the Discord private server. It's needed!
 
 ${matchEmbed.description}
 `
@@ -338,7 +340,7 @@ client.on("interactionCreate", async i => {
     new ActionRowBuilder().addComponents(
       new TextInputBuilder()
         .setCustomId("link")
-        .setLabel("Roblox Private Server Link")
+        .setLabel("Roblox Share Server Link")
         .setRequired(true)
         .setStyle(TextInputStyle.Short)
     )
@@ -347,42 +349,61 @@ client.on("interactionCreate", async i => {
   return i.showModal(modal);
 });
 
-// SUBMIT LINK
+// SUBMIT LINK (ONLY SHARE-LINKS + API VALIDATION)
 client.on("interactionCreate", async i => {
   if (!i.isModalSubmit() || !i.customId.startsWith("sendlink_")) return;
 
   const id = i.customId.replace("sendlink_", "");
   const link = i.fields.getTextInputValue("link");
 
-  // Volley Legends Place ID
   const GAME_ID = "17242062041";
 
-  // VIP Server (must match correct game ID)
-  const vipRegex = new RegExp(
-    `^https:\\/\\/www\\.roblox\\.com\\/games\\/${GAME_ID}\\/[^\\/?]+\\?privateServerLinkCode=[A-Za-z0-9_-]+$`
-  );
-
-  // Share Server
   const shareRegex =
     /^https:\/\/www\.roblox\.com\/share\?code=[A-Za-z0-9]+&type=Server$/;
 
-  if (!vipRegex.test(link) && !shareRegex.test(link)) {
+  if (!shareRegex.test(link)) {
     return i.reply({
       content:
         "❌ Invalid link.\n\n" +
-        "**Only Volley Legends private servers are allowed.**\n\n" +
-        "VIP:\nhttps://www.roblox.com/games/" + GAME_ID + "/NAME?privateServerLinkCode=XXXX\n\n" +
-        "Share:\nhttps://www.roblox.com/share?code=XXXX&type=Server",
+        "**Only Roblox Share-Servers for Volley Legends are allowed.**\n\n" +
+        "Example:\nhttps://www.roblox.com/share?code=XXXX&type=Server",
       ephemeral: true
     });
   }
 
-  const user = await client.users.fetch(id).catch(() => {});
-  if (user) {
-    await user.send(`Here is your private server link:\n${link}`).catch(() => {});
+  // Extract code
+  const code = new URL(link).searchParams.get("code");
+
+  try {
+    const res = await fetch(`https://apis.roblox.com/share/v1/share/${code}`);
+    const data = await res.json();
+
+    // Check if share belongs to Volley Legends
+    const placeId = data?.sharedPlaceId;
+
+    if (!placeId || String(placeId) !== GAME_ID) {
+      return i.reply({
+        content:
+          "❌ This Share-Link does not belong to Volley Legends.\n" +
+          "Please send a correct Share-Server from the game.",
+        ephemeral: true
+      });
+    }
+  } catch (err) {
+    return i.reply({
+      content: "❌ Could not validate this link. Try again later.",
+      ephemeral: true
+    });
   }
 
-  return i.reply({ content: "Private server link sent!", ephemeral: true });
+  // Send link to requester
+  const user = await client.users.fetch(id).catch(() => {});
+  if (user) {
+    await user.send(`Here is your Volley Legends private server:\n${link}`)
+      .catch(() => {});
+  }
+
+  return i.reply({ content: "Share link sent!", ephemeral: true });
 });
 
 // LOGIN
