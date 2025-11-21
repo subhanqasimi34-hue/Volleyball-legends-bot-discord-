@@ -291,16 +291,14 @@ client.on("interactionCreate", async i => {
 `ᴘʟᴀʏᴇʀ: ${requester}
 ʀᴇǫᴜᴇsᴛs: ${counter.count}
 
-Please send the Discord private server. It's needed!
+Please use the Volleyball Legends Privat Server. It's needed!
 
 ${matchEmbed.description}
 `
     );
 
   const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`accept_${requester.id}`).setLabel("Accept").setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId(`decline_${requester.id}`).setLabel("Decline").setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId(`link_${requester.id}`).setLabel("Send Private Server Link").setStyle(ButtonStyle.Primary)
+    new ButtonBuilder().setCustomId(`link_${requester.id}`).setLabel("Paste here your Volleyball Legends Privat Server!").setStyle(ButtonStyle.Primary)
   );
 
   await host.send({ embeds: [embed], components: [row] }).catch(() => {});
@@ -308,24 +306,6 @@ ${matchEmbed.description}
   return i.reply({ content: "Request sent!", ephemeral: true });
 });
 
-// ACCEPT / DECLINE
-client.on("interactionCreate", async i => {
-  if (!i.isButton()) return;
-
-  if (i.customId.startsWith("accept_")) {
-    const id = i.customId.replace("accept_", "");
-    const u = await client.users.fetch(id).catch(() => {});
-    if (u) u.send("Your request was accepted.").catch(() => {});
-    return i.reply({ content: "Accepted.", ephemeral: true });
-  }
-
-  if (i.customId.startsWith("decline_")) {
-    const id = i.customId.replace("decline_", "");
-    const u = await client.users.fetch(id).catch(() => {});
-    if (u) u.send("Your request was declined.").catch(() => {});
-    return i.reply({ content: "Declined.", ephemeral: true });
-  }
-});
 
 // SEND LINK MODAL
 client.on("interactionCreate", async i => {
@@ -350,82 +330,47 @@ client.on("interactionCreate", async i => {
   return i.showModal(modal);
 });
 
-// SUBMIT LINK (AUTO GAME VALIDATION THROUGH UNIVERSE API)
+// SUBMIT LINK (SAFE ROBLOX ONLY)
 client.on("interactionCreate", async i => {
   if (!i.isModalSubmit() || !i.customId.startsWith("sendlink_")) return;
 
   const id = i.customId.replace("sendlink_", "");
-  const link = i.fields.getTextInputValue("link");
+  const link = i.fields.getTextInputValue("link").trim();
 
-  const shareRegex =
-    /^https:\/\/www\.roblox\.com\/share\?code=[A-Za-z0-9]+&type=Server$/;
+  // Erlaubte Roblox Privatserver-Formate
+  const shareRegex = /^https:\/\/www\.roblox\.com\/share\?code=[A-Za-z0-9]+&type=Server$/;
+  const vipRegex = /^https:\/\/www\.roblox\.com\/games\/[0-9]+\/[^/?]+\?privateServerLinkCode=[A-Za-z0-9_-]+$/;
 
-  if (!shareRegex.test(link)) {
+  // Sicherheit: Nur Roblox-Domain
+  const robloxDomain = /^https:\/\/www\.roblox\.com\//;
+
+  if (!robloxDomain.test(link)) {
+    return i.reply({
+      content: "❌ Only Roblox links are allowed.",
+      ephemeral: true
+    });
+  }
+
+  // Privatserver prüfen (VIP oder Share)
+  if (!shareRegex.test(link) && !vipRegex.test(link)) {
     return i.reply({
       content:
-        "❌ Invalid link.\n\n" +
-        "**Only Roblox Share-Servers are allowed.**\n\n" +
-        "Example:\nhttps://www.roblox.com/share?code=XXXX&type=Server",
+        "❌ Invalid private server link.\n" +
+        "Only real **Roblox** private servers are allowed.\n\n" +
+        "**Examples:**\n" +
+        "• https://www.roblox.com/share?code=XXXXX&type=Server\n" +
+        "• https://www.roblox.com/games/ID/NAME?privateServerLinkCode=XXXXX",
       ephemeral: true
     });
   }
 
-  const code = new URL(link).searchParams.get("code");
-
-  try {
-    // Share → get placeId
-    const res = await fetch(`https://apis.roblox.com/share/v1/share/${code}`);
-    const data = await res.json();
-
-    const placeId = data?.sharedPlaceId;
-    if (!placeId) {
-      return i.reply({
-        content: "❌ Could not verify this link. The server might be offline.",
-        ephemeral: true
-      });
-    }
-
-    // 1) Get UniverseId from this place
-    const placeInfoReq = await fetch(
-      `https://games.roblox.com/v1/games/multiget-place-details?placeIds=${placeId}`
-    );
-    const placeInfo = await placeInfoReq.json();
-
-    const universeId = placeInfo[0]?.universeId;
-    if (!universeId) {
-      return i.reply({
-        content: "❌ Invalid server link.",
-        ephemeral: true
-      });
-    }
-
-    // 2) Check if this universe belongs to Volley Legends
-    const VOLLEY_UNIVERSE = "4942456509"; // Volley Legends Universe ID
-
-    if (String(universeId) !== VOLLEY_UNIVERSE) {
-      return i.reply({
-        content:
-          "❌ This Share-Link does NOT belong to **Volley Legends**.\n" +
-          "Please send a valid private server for this game.",
-        ephemeral: true
-      });
-    }
-
-  } catch (err) {
-    return i.reply({
-      content: "❌ Roblox API error. Try again later.",
-      ephemeral: true
-    });
-  }
-
-  // If valid → send to requester
+  // Wenn alles ok → An den Spieler senden
   const user = await client.users.fetch(id).catch(() => {});
   if (user) {
-    await user.send(`Here is your Volley Legends private server:\n${link}`)
-      .catch(() => {});
+    await user.send(`Here is your private server link:\n${link}`).catch(() => {});
   }
 
-  return i.reply({ content: "Share link as got sented!", ephemeral: true });
+  return i.reply({ content: "Private server link sent!", ephemeral: true });
 });
 
 // LOGIN
