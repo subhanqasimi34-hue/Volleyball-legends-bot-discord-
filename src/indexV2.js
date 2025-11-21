@@ -419,15 +419,13 @@ client.on("interactionCreate", async i => {
 
   try {
     await host.send({ embeds: [embed], components: [row] });
-  } catch {
-    // Falls DMs disabled sind
-  }
+  } catch {}
 
   return i.reply({ ephemeral: true, content: "Your request was sent!" });
 });
 
 // ------------------------------------------------------
-// ACCEPT / DECLINE SYSTEM
+// ACCEPT / DECLINE SYSTEM (UPDATED FOR DM SUPPORT)
 // ------------------------------------------------------
 client.on("interactionCreate", async i => {
   if (!i.isButton()) return;
@@ -435,15 +433,16 @@ client.on("interactionCreate", async i => {
   const [type, playerId, hostId] = i.customId.split("_");
   if (type !== "accept" && type !== "decline") return;
 
-  // FIX: DM click prevention
-  if (!i.guild) {
+  // Always use main server ID (fixes DM accept)
+  const guild = client.guilds.cache.get("1439709824773263503");
+
+  if (!guild) {
     return i.reply({
       ephemeral: true,
-      content: "Please click this button inside the server, not in private messages."
+      content: "❌ Server not found. Contact the bot owner."
     });
   }
 
-  const guild = i.guild;
   const host = i.user;
   const player = await client.users.fetch(playerId);
 
@@ -463,7 +462,6 @@ client.on("interactionCreate", async i => {
     channel = guild.channels.cache.get(active.channelId);
   }
 
-  // If missing: recreate
   if (!active || !channel) {
     let category = guild.channels.cache.find(c => c.name === CATEGORY_NAME && c.type === 4);
     if (!category) {
@@ -490,7 +488,6 @@ client.on("interactionCreate", async i => {
       { upsert: true }
     );
   } else {
-    // Channel exists
     if (active.players.length >= 3) {
       return i.reply({
         ephemeral: true,
@@ -518,7 +515,6 @@ client.on("interactionCreate", async i => {
 
   await channel.send(`🎉 <@${playerId}> joined the match with Host <@${hostId}>!`);
 
-  // Auto delete channel in 3 minutes
   setTimeout(async () => {
     const c = guild.channels.cache.get(channel.id);
     if (!c) return;
@@ -581,7 +577,7 @@ client.on("interactionCreate", async i => {
   if (active) {
     const channel = await client.channels.fetch(active.channelId).catch(() => null);
     if (channel) {
-      await channel.send(`🔗 **The Host sent you a privat link: ** from <@${i.user.id}>:\n${link}`);
+      await channel.send(`🔗 **The Host sent a private link:**\n${link}`);
     }
   }
 });
