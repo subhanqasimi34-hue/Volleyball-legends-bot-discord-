@@ -108,7 +108,8 @@ async function resetMatchmakingChannel() {
   const embed = new EmbedBuilder()
     .setColor("#22C55E")
     .setTitle("Volley Legends Matchmaking")
-    .setDescription("Click **Create Match** to start.");
+    .setDescription("We have made this bot for you save space / for scams,invalid links etc enjoy")
+    .setDescription("Click **Create Match and Find your Teamates** to start.");
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
@@ -340,7 +341,7 @@ client.on("interactionCreate", async i => {
     new ActionRowBuilder().addComponents(
       new TextInputBuilder()
         .setCustomId("link")
-        .setLabel("Roblox Share Server Link")
+        .setLabel("Roblox Share Server Link (Inneeded!)")
         .setRequired(true)
         .setStyle(TextInputStyle.Short)
     )
@@ -349,14 +350,12 @@ client.on("interactionCreate", async i => {
   return i.showModal(modal);
 });
 
-// SUBMIT LINK (ONLY SHARE-LINKS + API VALIDATION)
+// SUBMIT LINK (AUTO GAME VALIDATION THROUGH UNIVERSE API)
 client.on("interactionCreate", async i => {
   if (!i.isModalSubmit() || !i.customId.startsWith("sendlink_")) return;
 
   const id = i.customId.replace("sendlink_", "");
   const link = i.fields.getTextInputValue("link");
-
-  const GAME_ID = "17242062041";
 
   const shareRegex =
     /^https:\/\/www\.roblox\.com\/share\?code=[A-Za-z0-9]+&type=Server$/;
@@ -365,45 +364,68 @@ client.on("interactionCreate", async i => {
     return i.reply({
       content:
         "❌ Invalid link.\n\n" +
-        "**Only Roblox Share-Servers for Volley Legends are allowed.**\n\n" +
+        "**Only Roblox Share-Servers are allowed.**\n\n" +
         "Example:\nhttps://www.roblox.com/share?code=XXXX&type=Server",
       ephemeral: true
     });
   }
 
-  // Extract code
   const code = new URL(link).searchParams.get("code");
 
   try {
+    // Share → get placeId
     const res = await fetch(`https://apis.roblox.com/share/v1/share/${code}`);
     const data = await res.json();
 
-    // Check if share belongs to Volley Legends
     const placeId = data?.sharedPlaceId;
-
-    if (!placeId || String(placeId) !== GAME_ID) {
+    if (!placeId) {
       return i.reply({
-        content:
-          "❌ This Share-Link does not belong to Volley Legends.\n" +
-          "Please send a correct Share-Server from the game.",
+        content: "❌ Could not verify this link. The server might be offline.",
         ephemeral: true
       });
     }
+
+    // 1) Get UniverseId from this place
+    const placeInfoReq = await fetch(
+      `https://games.roblox.com/v1/games/multiget-place-details?placeIds=${placeId}`
+    );
+    const placeInfo = await placeInfoReq.json();
+
+    const universeId = placeInfo[0]?.universeId;
+    if (!universeId) {
+      return i.reply({
+        content: "❌ Invalid server link.",
+        ephemeral: true
+      });
+    }
+
+    // 2) Check if this universe belongs to Volley Legends
+    const VOLLEY_UNIVERSE = "4942456509"; // Volley Legends Universe ID
+
+    if (String(universeId) !== VOLLEY_UNIVERSE) {
+      return i.reply({
+        content:
+          "❌ This Share-Link does NOT belong to **Volley Legends**.\n" +
+          "Please send a valid private server for this game.",
+        ephemeral: true
+      });
+    }
+
   } catch (err) {
     return i.reply({
-      content: "❌ Could not validate this link. Try again later.",
+      content: "❌ Roblox API error. Try again later.",
       ephemeral: true
     });
   }
 
-  // Send link to requester
+  // If valid → send to requester
   const user = await client.users.fetch(id).catch(() => {});
   if (user) {
     await user.send(`Here is your Volley Legends private server:\n${link}`)
       .catch(() => {});
   }
 
-  return i.reply({ content: "Share link sent!", ephemeral: true });
+  return i.reply({ content: "Share link as got sented!", ephemeral: true });
 });
 
 // LOGIN
