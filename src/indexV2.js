@@ -101,7 +101,7 @@ async function resetMatchmakingChannel() {
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setCustomId("please click here do creat a match")
+      .setCustomId("create_match")
       .setLabel("Please click here do Creat a match")
       .setStyle(ButtonStyle.Success)
   );
