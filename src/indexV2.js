@@ -85,7 +85,7 @@ async function resetMatchmakingChannel() {
 
   const embed = new EmbedBuilder()
     .setColor("#22C55E")
-    .setTitle("🏐 𝙑𝙤𝙡𝙡𝙚𝙮 𝙇𝙚𝙜𝙚𝙣𝙙𝙨 𝗠𝗮𝘁𝗰𝗵𝗺𝗮𝗸𝗶𝗻𝗴")
+    .setTitle("🏐 Volley Legends Matchmaking")
     .setDescription("Find teammates instantly.\nPress **Create Match** to begin.");
 
   const row = new ActionRowBuilder().addComponents(
@@ -198,16 +198,14 @@ client.on("interactionCreate", async i => {
     .setTitle("🏐 Volley Legends Match Found")
     .setDescription(
       `👤 **Host:** <@${user.id}>\n\n` +
-      `📌 **Stats:**\n` +
       `• Level: ${level}\n` +
       `• Rank: ${rank}\n` +
-      `• Playstyle: ${playstyle}\n\n` +
-      `📌 **Profile:**\n` +
+      `• Playstyle: ${playstyle}\n` +
       `• Ability: ${ability}\n` +
       `• Region: ${region}\n` +
       `• VC: ${vc}\n` +
-      `• Language: ${language}\n\n` +
-      `📝 ${notes || "None"}`
+      `• Language: ${language}\n` +
+      `• Notes: ${notes || "None"}`
     );
 
   const btn = new ActionRowBuilder().addComponents(
