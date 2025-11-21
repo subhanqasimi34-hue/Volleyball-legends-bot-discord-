@@ -113,8 +113,8 @@ client.on("interactionCreate", async i => {
   if (!i.isButton() || i.customId !== "create_match") return;
   const cd = await checkHostCooldown(i.user.id);
   if (cd > 0) {
-    await i.deferReply({ ephemeral: true });
-    return i.editReply(`You must wait **${cd} min** before creating again.`);
+   const s = await i.user.send(`You must wait **${cd} min** before creating again.`);
+    setTimeout(() => s.delete().catch(() => {}), 60000);
   }
   const stats = await HostStats.findOne({ userId: i.user.id });
   if (!stats) return openModal(i, false, null);
@@ -215,8 +215,8 @@ ${notes || "None"}
   const ch = client.channels.cache.get(FIND_PLAYERS_CHANNEL_ID);
   await ch.send({ content: `${user}`, embeds: [embed], components: [btn] });
 
-  await i.deferReply({ ephemeral: true });
-  i.editReply("Match created!");
+const s = await i.user.send("Match created!");
+setTimeout(() => s.delete().catch(() => {}), 60000);
 });
 
 // PLAYER REQUEST
@@ -262,8 +262,8 @@ ${matchEmbed.description}
 
   await host.send({ embeds: [embed], components: [row] }).catch(() => {});
 
-  await i.deferReply({ ephemeral: true });
-  i.editReply("Request sent!");
+ const s = await i.user.send("Request sent!");
+setTimeout(() => s.delete().catch(() => {}), 60000);
 });
 
 // ACCEPT / DECLINE
@@ -274,16 +274,17 @@ client.on("interactionCreate", async i => {
     const id = i.customId.replace("accept_", "");
     const u = await client.users.fetch(id).catch(() => {});
     if (u) u.send("Your request was accepted.").catch(() => {});
-    await i.deferReply({ ephemeral: true });
-    return i.editReply("Accepted.");
+    const m = await i.user.send("Accepted.");
+    setTimeout(() => m.delete().catch(() => {}), 60000);
   }
 
   if (i.customId.startsWith("decline_")) {
     const id = i.customId.replace("decline_", "");
     const u = await client.users.fetch(id).catch(() => {});
     if (u) u.send("Your request was declined.").catch(() => {});
-    await i.deferReply({ ephemeral: true });
-    return i.editReply("Declined.");
+    const m = await i.user.send("Declined.");
+    setTimeout(() => m.delete().catch(() => {}), 60000);
+
   }
 });
 
@@ -324,14 +325,8 @@ const shareRegex =
   /^https:\/\/www\.roblox\.com\/share\?code=[A-Za-z0-9]+&type=Server$/;
 
 if (!vipRegex.test(link) && !shareRegex.test(link)) {
-  await i.deferReply({ ephemeral: true });
-  return i.editReply(
-    "❌ Invalid link.\n" +
-    "Accepted formats:\n\n" +
-    "**VIP Server:**\n" +
-    "`https://www.roblox.com/games/ID/NAME?privateServerLinkCode=XXXX`\n\n" +
-    "**Share Server:**\n" +
-    "`https://www.roblox.com/share?code=XXXX&type=Server`"
+  const warn = await i.user.send("❌ Invalid link.\nAccepted formats:\n ...");
+setTimeout(() => warn.delete().catch(() => {}), 60000);
   );
 }
 
@@ -339,8 +334,8 @@ if (!vipRegex.test(link) && !shareRegex.test(link)) {
   const user = await client.users.fetch(id).catch(() => {});
   if (user) user.send(`Here is your private server link:\n${link}`).catch(() => {});
 
-  await i.deferReply({ ephemeral: true });
-  i.editReply("Private server link sent!");
+const sent = await i.user.send(`Private server link sent!`);
+setTimeout(() => sent.delete().catch(() => {}), 60000);
 });
 
 // LOGIN
