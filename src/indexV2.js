@@ -316,15 +316,25 @@ client.on("interactionCreate", async i => {
   const id = i.customId.replace("sendlink_", "");
   const link = i.fields.getTextInputValue("link");
 
-  const vipRegex =
-    /^https:\/\/www\.roblox\.com\/games\/[0-9]+\/[^\/]+\/?\?privateServerLinkCode=[A-Za-z0-9_-]+$/;
+ // Accept both VIP links AND share links
+const vipRegex =
+  /^https:\/\/www\.roblox\.com\/games\/\d+\/[^\/\?]+(\?privateServerLinkCode=[A-Za-z0-9_-]+)$/;
 
-  if (!vipRegex.test(link)) {
-    await i.deferReply({ ephemeral: true });
-    return i.editReply(
-      "❌ Invalid link.\nOnly **Roblox Private Server links** are allowed:\n`https://www.roblox.com/games/ID/NAME?privateServerLinkCode=XXXX`"
-    );
-  }
+const shareRegex =
+  /^https:\/\/www\.roblox\.com\/share\?code=[A-Za-z0-9]+&type=Server$/;
+
+if (!vipRegex.test(link) && !shareRegex.test(link)) {
+  await i.deferReply({ ephemeral: true });
+  return i.editReply(
+    "❌ Invalid link.\n" +
+    "Accepted formats:\n\n" +
+    "**VIP Server:**\n" +
+    "`https://www.roblox.com/games/ID/NAME?privateServerLinkCode=XXXX`\n\n" +
+    "**Share Server:**\n" +
+    "`https://www.roblox.com/share?code=XXXX&type=Server`"
+  );
+}
+
 
   const user = await client.users.fetch(id).catch(() => {});
   if (user) user.send(`Here is your private server link:\n${link}`).catch(() => {});
