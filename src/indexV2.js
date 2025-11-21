@@ -1,5 +1,5 @@
 // ======================================================
-// VOLLEY LEGENDS MATCHMAKING BOT — ULTRA FIXED VERSION
+// VOLLEY LEGENDS MATCHMAKING BOT — FINAL GLOBAL AUTODELETE
 // ======================================================
 
 import {
@@ -110,6 +110,66 @@ function parseCommunication(text) {
   return { vc, language };
 }
 
+// ---------------- GLOBAL AUTO DELETE SYSTEM --------------------
+// Based on your EXACT rules.
+//
+// Delete after 60 seconds IF:
+//
+// • DM → always delete (embed or no embed)
+// • Matchmaking / FindPlayers text → delete
+// • "Request sent", "Match created" → delete
+// • Non-embed bot text → delete
+//
+// DO NOT delete:
+//
+// • Embeds in server
+// • Buttons without embeds
+//--------------------------------------------------------------------
+
+client.on("messageCreate", msg => {
+  if (!msg.author.bot) return;
+
+  const isDM = msg.channel.type === 1; // DM channel type
+  const hasEmbed = msg.embeds?.length > 0;
+  const content = msg.content?.toLowerCase() || "";
+
+  // Always delete DMs (embed or not)
+  if (isDM) {
+    setTimeout(() => msg.delete().catch(() => {}), 60000);
+    return;
+  }
+
+  // Channels that must be auto-cleaned
+  const autoCleanChannels = [MATCHMAKING_CHANNEL_ID, FIND_PLAYERS_CHANNEL_ID];
+  const mustClean = autoCleanChannels.includes(msg.channel.id);
+
+  // Messages that must always be deleted
+  const deleteTriggers = [
+    "request sent",
+    "match created",
+    "please click",
+    "accepted!",
+    "declined"
+  ];
+
+  const mustDeleteByContent = deleteTriggers.some(t => content.includes(t));
+
+  // If embed and in server: KEEP
+  if (hasEmbed && !isDM) return;
+
+  // If server text in matchmaking / findplayers → delete
+  if (mustClean && !hasEmbed) {
+    setTimeout(() => msg.delete().catch(() => {}), 60000);
+    return;
+  }
+
+  // If content trigger matches → delete
+  if (mustDeleteByContent) {
+    setTimeout(() => msg.delete().catch(() => {}), 60000);
+    return;
+  }
+});
+
 // ---------------- CHANNEL RESET ------------------------
 client.once("ready", async () => {
   console.log("Bot online.");
@@ -119,7 +179,7 @@ client.once("ready", async () => {
   await ch.bulkDelete(100).catch(()=>{});
 
   const embed = new EmbedBuilder()
-    .setColor("#22C55E")
+    .setColor(0x22C55E)
     .setTitle("🏐 Volley Legends Matchmaking")
     .setDescription("Find teammates.\nPress **Create Match** to begin.");
 
@@ -142,7 +202,7 @@ client.on("interactionCreate", async i => {
       ephemeral: true,
       embeds: [
         new EmbedBuilder()
-          .setColor("#22C55E")
+          .setColor(0x22C55E)
           .setTitle("♻️ Reuse last stats?")
           .setDescription("Reuse your previous match info?")
       ],
@@ -221,7 +281,7 @@ client.on("interactionCreate", async i => {
   const { vc, language } = parseCommunication(comm);
 
   const embed = new EmbedBuilder()
-    .setColor("#22C55E")
+    .setColor(0x22C55E)
     .setTitle("🏐 Volley Legends Match Found")
     .setDescription(
       `👤 **Host:** <@${user.id}>\n\n` +
@@ -321,7 +381,7 @@ client.on("interactionCreate", async i => {
   const { vc, language } = parseCommunication(comm);
 
   const embed = new EmbedBuilder()
-    .setColor("#22C55E")
+    .setColor(0x22C55E)
     .setTitle("🔔 New Play Request")
     .setDescription(
       `👤 **Player:** <@${requester.id}>\n` +
@@ -342,8 +402,7 @@ client.on("interactionCreate", async i => {
   );
 
   try {
-    const msg = await host.send({ embeds: [embed], components: [row] });
-    setTimeout(() => msg.delete().catch(()=>{}), 60000);
+    await host.send({ embeds: [embed], components: [row] });
   } catch {}
 
   return i.reply({ ephemeral: true, content: "Request sent!" });
@@ -362,10 +421,8 @@ client.on("interactionCreate", async i => {
 
   if (type === "decline") {
     try {
-      const dm = await player.send("❌ Your request was declined.");
-      setTimeout(() => dm.delete().catch(()=>{}), 60000);
+      await player.send("❌ Your request was declined.");
     } catch {}
-
     return i.reply({ ephemeral: true, content: "Declined." });
   }
 
@@ -414,13 +471,12 @@ client.on("interactionCreate", async i => {
   }
 
   try {
-    const dm = await player.send("✅ You were accepted into the Match-Team! Check the group channel.");
-    setTimeout(() => dm.delete().catch(()=>{}), 60000);
+    await player.send("✅ You were accepted! Check the group channel.");
   } catch {}
 
   await i.reply({ ephemeral: true, content: "Player added." });
 
-  await channel.send(`🎉 <@${playerId}> Match-player joined <@${hostId}>'s match!`);
+  await channel.send(`🎉 <@${playerId}> joined <@${hostId}>'s match!`);
 
   setTimeout(async () => {
     const c = guild.channels.cache.get(channel.id);
