@@ -367,10 +367,10 @@ client.on("interactionCreate", async i => {
   // Wenn alles ok → An den Spieler senden
   const user = await client.users.fetch(id).catch(() => {});
   if (user) {
-    await user.send(`Here is your private server link:\n${link}`).catch(() => {});
+    await user.send(`The Host has sent you a privat server link! :\n${link}`).catch(() => {});
   }
 
-  return i.reply({ content: "Private server link sent!", ephemeral: true });
+  return i.reply({ content: "The Privat link has been sent! ", ephemeral: true });
 });
 
 // LOGIN
