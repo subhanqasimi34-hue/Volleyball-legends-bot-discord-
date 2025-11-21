@@ -1,8 +1,3 @@
-// ================================================================
-// indexV6.js – Volley Legends Matchmaking Bot (Premium Edition)
-// With: MongoDB, Cooldowns, Auto-Delete, Request Counter, 2 Channels
-// ================================================================
-
 import {
   Client,
   GatewayIntentBits,
@@ -21,60 +16,57 @@ import express from "express";
 import dotenv from "dotenv";
 dotenv.config();
 
-// ================================================================
-// EXPRESS SERVER
-// ================================================================
+// ------------------------------------------------------
+// EXPRESS KEEPALIVE (UPTIME ROBOT / CLOUDFLARE)
+// ------------------------------------------------------
 const app = express();
-app.get("/", (req, res) => res.send("Volley Legends Bot running"));
-app.listen(3000, () => console.log("Express OK"));
+app.get("/", (req, res) => res.send("Volley Legends Bot Running"));
+app.listen(3000);
 
-// ================================================================
-// MONGO CONNECTION
-// ================================================================
-mongoose
-  .connect(process.env.MONGO_URI, { dbName: "VolleyBot" })
-  .then(() => console.log("MongoDB Connected"))
-  .catch(err => console.log("MongoDB Error:", err));
+// ------------------------------------------------------
+// DATABASE CONNECTION
+// ------------------------------------------------------
+mongoose.connect(process.env.MONGO_URI, { dbName: "VolleyBot" });
 
-// ================================================================
+// ------------------------------------------------------
 // MONGO SCHEMAS
-// ================================================================
-const hostStatsSchema = new mongoose.Schema({
-  userId: { type: String, required: true, unique: true },
+// ------------------------------------------------------
+const statsSchema = {
+  userId: { type: String, required: true },
   gameplay: String,
   ability: String,
   region: String,
   communication: String,
   notes: String
-});
+};
 
-const HostStats = mongoose.model("HostStats", hostStatsSchema);
+const HostStats = mongoose.model("HostStats", new mongoose.Schema(statsSchema));
+const PlayerStats = mongoose.model("PlayerStats", new mongoose.Schema(statsSchema));
 
-const cooldownSchema = new mongoose.Schema({
-  userId: String,
-  hostId: String,
-  timestamp: Number
-});
+const Cooldowns = mongoose.model("Cooldowns",
+  new mongoose.Schema({ userId: String, hostId: String, timestamp: Number })
+);
 
-const Cooldowns = mongoose.model("Cooldowns", cooldownSchema);
+const HostCooldown = mongoose.model("HostCooldown",
+  new mongoose.Schema({ userId: String, timestamp: Number })
+);
 
-const hostCooldownSchema = new mongoose.Schema({
-  userId: String,
-  timestamp: Number
-});
+const RequestCounter = mongoose.model("RequestCounter",
+  new mongoose.Schema({ hostId: String, count: Number })
+);
 
-const HostCooldown = mongoose.model("HostCooldown", hostCooldownSchema);
+// one channel per host
+const ActiveMatch = mongoose.model("ActiveMatch",
+  new mongoose.Schema({
+    hostId: String,
+    channelId: String,
+    players: [String]
+  })
+);
 
-const requestCountSchema = new mongoose.Schema({
-  hostId: String,
-  count: Number
-});
-
-const RequestCounter = mongoose.model("RequestCounter", requestCountSchema);
-
-// ================================================================
+// ------------------------------------------------------
 // DISCORD CLIENT
-// ================================================================
+// ------------------------------------------------------
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -84,64 +76,64 @@ const client = new Client({
   partials: [Partials.Channel, Partials.Message, Partials.User]
 });
 
-// ================================================================
-// CHANNELS
-// ================================================================
+// CONFIG
 const MATCHMAKING_CHANNEL_ID = "1441139756007161906";
 const FIND_PLAYERS_CHANNEL_ID = "1441140684622008441";
+const CATEGORY_NAME = "Matchmaking";
 
-let parentMessage = null;
-
-// ================================================================
-// PARSER HELPERS
-// ================================================================
+// ------------------------------------------------------
+// HELPERS
+// ------------------------------------------------------
 function parseLevelRankPlaystyle(text) {
-  const parts = text.split("|").map(p => p.trim());
+  const p = text.split("|").map(t => t.trim());
   let level = "Unknown", rank = "Unknown", playstyle = "Unknown";
 
-  const lvl = parts.find(p => /^\d{1,4}$/i.test(p));
+  const lvl = p.find(x => /^\d{1,4}$/i.test(x));
   if (lvl) level = lvl;
 
-  const rk = parts.find(p =>
-    /(bronze|silver|gold|diamond|elite|pro|i|ii|iii)/i.test(p)
-  );
+  const rk = p.find(x => /(bronze|silver|gold|diamond|elite|pro|i|ii|iii)/i.test(x));
   if (rk) rank = rk;
 
-  const ps = parts.find(p => p !== lvl && p !== rk);
+  const ps = p.find(x => x !== lvl && x !== rk);
   if (ps) playstyle = ps;
 
   return { level, rank, playstyle };
 }
 
 function parseCommunication(text) {
-  const parts = text.split("|").map(p => p.trim());
+  const p = text.split("|").map(t => t.trim());
   let vc = "Unknown", language = "Unknown";
 
-  const vcPart = parts.find(p => /(yes|no|vc|voice)/i.test(p));
-  if (vcPart) vc = vcPart;
+  const v = p.find(x => /(vc|voice|yes|no)/i.test(x));
+  if (v) vc = v;
 
-  const lang = parts.find(p =>
-    /(eng|english|german|de|fr|turkish|spanish|arabic)/i.test(p)
-  );
-  if (lang) language = lang;
+  const l = p.find(x => /(eng|english|german|de|turkish|spanish|arabic)/i.test(x));
+  if (l) language = l;
 
   return { vc, language };
 }
 
-// ================================================================
-// RESET MATCHMAKING CHANNEL (DELETES ALL REQUESTS)
-// ================================================================
+function autoDelete(msg) {
+  setTimeout(() => {
+    if (!msg) return;
+    msg.delete().catch(() => {});
+  }, 5 * 60 * 1000);
+}
+
+// ------------------------------------------------------
+// RESET MATCHMAKING CHANNEL
+// ------------------------------------------------------
 async function resetMatchmakingChannel() {
   const channel = client.channels.cache.get(MATCHMAKING_CHANNEL_ID);
   if (!channel) return;
 
-  const messages = await channel.messages.fetch({ limit: 100 }).catch(() => {});
-  if (messages) await channel.bulkDelete(messages).catch(() => {});
+  const old = await channel.messages.fetch({ limit: 100 }).catch(() => {});
+  if (old) channel.bulkDelete(old).catch(() => {});
 
   const embed = new EmbedBuilder()
+    .setColor("#22C55E")
     .setTitle("🏐 Volley Legends Matchmaking")
-    .setDescription("Click **Create Match** to find teammates.")
-    .setColor("#22C55E");
+    .setDescription("Find teammates instantly.\nPress **Create Match** to begin.");
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
@@ -150,145 +142,117 @@ async function resetMatchmakingChannel() {
       .setStyle(ButtonStyle.Success)
   );
 
-  const msg = await channel.send({ embeds: [embed], components: [row] });
-  parentMessage = msg;
+  await channel.send({ embeds: [embed], components: [row] });
 }
 
-// ================================================================
 client.once("ready", async () => {
-  console.log(`Logged in as ${client.user.tag}`);
+  console.log("Bot ready.");
   await resetMatchmakingChannel();
 });
 
-// ================================================================
-// 5 MIN HOST COOLDOWN CHECK
-// ================================================================
-async function checkHostCooldown(userId) {
-  const entry = await HostCooldown.findOne({ userId });
+// ------------------------------------------------------
+// HOST COOLDOWN
+// ------------------------------------------------------
+async function checkHostCooldown(id) {
+  const entry = await HostCooldown.findOne({ userId: id });
   if (!entry) return 0;
 
-  const now = Date.now();
-  const diff = now - entry.timestamp;
-
-  if (diff >= 5 * 60 * 1000) return 0; // expired
+  const diff = Date.now() - entry.timestamp;
+  if (diff >= 5 * 60 * 1000) return 0;
 
   return Math.ceil((5 * 60 * 1000 - diff) / 60000);
 }
 
-// ================================================================
-// HOST CLICK: CREATE MATCH → Ask Reuse
-// ================================================================
+// ------------------------------------------------------
+// CREATE MATCH BUTTON
+// ------------------------------------------------------
 client.on("interactionCreate", async interaction => {
   if (!interaction.isButton()) return;
   if (interaction.customId !== "create_match") return;
 
-  // Check Host Cooldown
-  const minutesLeft = await checkHostCooldown(interaction.user.id);
-  if (minutesLeft > 0) {
-    return interaction.reply({
-      content: `❌ You must wait **${minutesLeft} minute(s)** before creating a new match again.`,
-      ephemeral: true
+  const cd = await checkHostCooldown(interaction.user.id);
+  if (cd > 0) {
+    const msg = await interaction.reply({
+      ephemeral: true,
+      content: `❌ Wait **${cd} min** before creating another match.`
     });
+    autoDelete(msg);
+    return;
   }
 
-  await resetMatchmakingChannel();
-
-  const stats = await HostStats.findOne({ userId: interaction.user.id });
-
-  if (!stats) return openModal(interaction, false, null);
-
-  const embed = new EmbedBuilder()
-    .setTitle("♻️ Reuse previous match settings?")
+  const reuseEmbed = new EmbedBuilder()
     .setColor("#22C55E")
-    .setDescription("Would you like to autofill your last match settings?");
+    .setTitle("♻️ Reuse last stats?")
+    .setDescription("Do you want to reuse your last stats?");
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId("reuse_yes").setLabel("Yes").setStyle(ButtonStyle.Success),
     new ButtonBuilder().setCustomId("reuse_no").setLabel("No").setStyle(ButtonStyle.Secondary)
   );
 
-  return interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
+  const reply = await interaction.reply({
+    ephemeral: true,
+    embeds: [reuseEmbed],
+    components: [row]
+  });
+
+  autoDelete(reply);
 });
 
-// ================================================================
-// OPEN MODAL
-// ================================================================
-function openModal(interaction, autofill, data) {
-  const modal = new ModalBuilder()
-    .setCustomId("match_form")
-    .setTitle("Create Volley Match");
-
-  const gameplay = new TextInputBuilder()
-    .setCustomId("gameplay")
-    .setLabel("Level | Rank | Playstyle")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(true);
-
-  const ability = new TextInputBuilder()
-    .setCustomId("ability")
-    .setLabel("Ability")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(true);
-
-  const region = new TextInputBuilder()
-    .setCustomId("region")
-    .setLabel("Region")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(true);
-
-  const comm = new TextInputBuilder()
-    .setCustomId("communication")
-    .setLabel("VC | Language")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(true);
-
-  const notes = new TextInputBuilder()
-    .setCustomId("notes")
-    .setLabel("Notes")
-    .setStyle(TextInputStyle.Paragraph)
-    .setRequired(false);
-
-  if (autofill && data) {
-    gameplay.setValue(data.gameplay);
-    ability.setValue(data.ability);
-    region.setValue(data.region);
-    comm.setValue(data.communication);
-    notes.setValue(data.notes || "");
-  }
-
-  modal.addComponents(
-    new ActionRowBuilder().addComponents(gameplay),
-    new ActionRowBuilder().addComponents(ability),
-    new ActionRowBuilder().addComponents(region),
-    new ActionRowBuilder().addComponents(comm),
-    new ActionRowBuilder().addComponents(notes)
-  );
-
-  return interaction.showModal(modal);
-}
-
-// ================================================================
-// YES / NO REUSE
-// ================================================================
+// ------------------------------------------------------
+// REUSE STATS YES/NO
+// ------------------------------------------------------
 client.on("interactionCreate", async interaction => {
   if (!interaction.isButton()) return;
 
   if (interaction.customId === "reuse_yes") {
     const stats = await HostStats.findOne({ userId: interaction.user.id });
-    return openModal(interaction, true, stats);
+    openHostModal(interaction, true, stats);
   }
 
   if (interaction.customId === "reuse_no") {
-    return openModal(interaction, false, null);
+    openHostModal(interaction, false, null);
   }
 });
 
-// ================================================================
-// SUBMIT MATCH FORM → SEND TO #find-players
-// ================================================================
+// ------------------------------------------------------
+// HOST FORM MODAL
+// ------------------------------------------------------
+function openHostModal(interaction, autofill, data) {
+  const modal = new ModalBuilder()
+    .setCustomId("host_form")
+    .setTitle("Create Match");
+
+  const fields = [
+    ["gameplay", "Level | Rank | Playstyle", data?.gameplay],
+    ["ability", "Ability", data?.ability],
+    ["region", "Region", data?.region],
+    ["communication", "VC | Language", data?.communication],
+    ["notes", "Notes", data?.notes]
+  ];
+
+  modal.addComponents(
+    ...fields.map(([id, label, val]) =>
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId(id)
+          .setLabel(label)
+          .setValue(autofill && val ? val : "")
+          .setRequired(id !== "notes")
+          .setStyle(label === "Notes" ? TextInputStyle.Paragraph : TextInputStyle.Short)
+      )
+    )
+  );
+
+  interaction.showModal(modal);
+}
+
+// ------------------------------------------------------
+// HOST SUBMITS FORM
+// ------------------------------------------------------
 client.on("interactionCreate", async interaction => {
   if (!interaction.isModalSubmit()) return;
-  if (interaction.customId !== "match_form") return;
+  if (interaction.customId !== "host_form") return;
 
   const user = interaction.user;
 
@@ -298,45 +262,40 @@ client.on("interactionCreate", async interaction => {
   const comm = interaction.fields.getTextInputValue("communication");
   const notes = interaction.fields.getTextInputValue("notes");
 
-  const { level, rank, playstyle } = parseLevelRankPlaystyle(gameplay);
-  const { vc, language } = parseCommunication(comm);
-
-  // SAVE PROFILE
   await HostStats.findOneAndUpdate(
     { userId: user.id },
     { gameplay, ability, region, communication: comm, notes },
     { upsert: true }
   );
 
-  // RESET REQUEST COUNTER
-  await RequestCounter.findOneAndUpdate(
-    { hostId: user.id },
-    { count: 0 },
-    { upsert: true }
-  );
-
-  // SET HOST COOLDOWN
   await HostCooldown.findOneAndUpdate(
     { userId: user.id },
     { timestamp: Date.now() },
     { upsert: true }
   );
 
+  await RequestCounter.findOneAndUpdate(
+    { hostId: user.id },
+    { count: 0 },
+    { upsert: true }
+  );
+
+  const { level, rank, playstyle } = parseLevelRankPlaystyle(gameplay);
+  const { vc, language } = parseCommunication(comm);
+
   const embed = new EmbedBuilder()
     .setColor("#22C55E")
     .setTitle("🏐 Volley Legends Match Found")
     .setDescription(
-      `👤 **Host:** ${user}\n\n` +
-      `📌 **Stats:**\n` +
-      `• 📊 **Level:** ${level}\n` +
-      `• 🏅 **Rank:** ${rank}\n` +
-      `• 🎮 **Playstyle:** ${playstyle}\n\n` +
-      `📌 **Profile:**\n` +
-      `• ⚡ **Ability:** ${ability}\n` +
-      `• 🌍 **Region:** ${region}\n` +
-      `• 🎤 **VC:** ${vc}\n` +
-      `• 🗣️ **Language:** ${language}\n\n` +
-      `📝 **Notes:**\n${notes || "None"}`
+      `👤 **Host:** <@${user.id}>\n\n` +
+      `• Level: ${level}\n` +
+      `• Rank: ${rank}\n` +
+      `• Playstyle: ${playstyle}\n` +
+      `• Ability: ${ability}\n` +
+      `• Region: ${region}\n` +
+      `• VC: ${vc}\n` +
+      `• Language: ${language}\n` +
+      `• Notes: ${notes || "None"}`
     );
 
   const btn = new ActionRowBuilder().addComponents(
@@ -346,50 +305,101 @@ client.on("interactionCreate", async interaction => {
       .setStyle(ButtonStyle.Success)
   );
 
-  const channel = client.channels.cache.get(FIND_PLAYERS_CHANNEL_ID);
-  await channel.send({ content: `${user}`, embeds: [embed], components: [btn] });
+  const fp = client.channels.cache.get(FIND_PLAYERS_CHANNEL_ID);
+  await fp.send({ content: `<@${user.id}>`, embeds: [embed], components: [btn] });
 
-  return interaction.reply({ content: "Match created!", ephemeral: true });
+  const reply = await interaction.reply({
+    ephemeral: true,
+    content: "Match created!"
+  });
+  autoDelete(reply);
 });
 
-// ================================================================
-// PLAYER REQUEST → 5 MIN COOLDOWN + COUNTER + REQUEST EMBED
-// ================================================================
-async function checkPlayerCooldown(playerId, hostId) {
-  const entry = await Cooldowns.findOne({ userId: playerId, hostId });
-  if (!entry) return 0;
-
-  const now = Date.now();
-  const diff = now - entry.timestamp;
-
-  if (diff >= 5 * 60 * 1000) return 0;
-
-  return Math.ceil((5 * 60 * 1000 - diff) / 60000);
-}
-
+// ------------------------------------------------------
+// PLAYER CLICKS PLAY TOGETHER
+// ------------------------------------------------------
 client.on("interactionCreate", async interaction => {
   if (!interaction.isButton()) return;
   if (!interaction.customId.startsWith("request_")) return;
 
-  const hostId = interaction.customId.replace("request_", "");
+  const hostId = interaction.customId.split("_")[1];
   const requester = interaction.user;
 
-  const cooldown = await checkPlayerCooldown(requester.id, hostId);
-  if (cooldown > 0) {
-    return interaction.reply({
-      content: `❌ You must wait **${cooldown} minute(s)** before sending another request to this host.`,
-      ephemeral: true
+  const cd = await Cooldowns.findOne({ userId: requester.id, hostId });
+  if (cd && Date.now() - cd.timestamp < 5 * 60 * 1000) {
+    const min = Math.ceil((5 * 60 * 1000 - (Date.now() - cd.timestamp)) / 60000);
+    const err = await interaction.reply({
+      ephemeral: true,
+      content: `❌ Wait **${min} min** before sending again.`
     });
+    autoDelete(err);
+    return;
   }
 
-  // SAVE PLAYER COOLDOWN
+  const oldStats = await PlayerStats.findOne({ userId: requester.id });
+  openPlayerModal(interaction, !!oldStats, oldStats, hostId);
+});
+
+// ------------------------------------------------------
+// PLAYER MODAL
+// ------------------------------------------------------
+function openPlayerModal(interaction, autofill, data, hostId) {
+  const modal = new ModalBuilder()
+    .setCustomId(`player_form_${hostId}`)
+    .setTitle("Your Stats");
+
+  const fields = [
+    ["p_gameplay", "Level | Rank | Playstyle", data?.gameplay],
+    ["p_ability", "Ability", data?.ability],
+    ["p_region", "Region", data?.region],
+    ["p_communication", "VC | Language", data?.communication],
+    ["p_notes", "Notes", data?.notes]
+  ];
+
+  modal.addComponents(
+    ...fields.map(([id, label, val]) =>
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId(id)
+          .setLabel(label)
+          .setValue(autofill && val ? val : "")
+          .setRequired(id !== "p_notes")
+          .setStyle(label === "Notes" ? TextInputStyle.Paragraph : TextInputStyle.Short)
+      )
+    )
+  );
+
+  interaction.showModal(modal);
+}
+
+// ------------------------------------------------------
+// PLAYER SUBMITS MODAL
+// ------------------------------------------------------
+client.on("interactionCreate", async interaction => {
+  if (!interaction.isModalSubmit()) return;
+  if (!interaction.customId.startsWith("player_form_")) return;
+
+  const hostId = interaction.customId.split("_")[2];
+  const requester = interaction.user;
+
+  const gameplay = interaction.fields.getTextInputValue("p_gameplay");
+  const ability = interaction.fields.getTextInputValue("p_ability");
+  const region = interaction.fields.getTextInputValue("p_region");
+  const comm = interaction.fields.getTextInputValue("p_communication");
+  const notes = interaction.fields.getTextInputValue("p_notes");
+
+  await PlayerStats.findOneAndUpdate(
+    { userId: requester.id },
+    { gameplay, ability, region, communication: comm, notes },
+    { upsert: true }
+  );
+
   await Cooldowns.findOneAndUpdate(
     { userId: requester.id, hostId },
     { timestamp: Date.now() },
     { upsert: true }
   );
 
-  // INCREASE HOST REQUEST COUNTER
   const counter = await RequestCounter.findOneAndUpdate(
     { hostId },
     { $inc: { count: 1 } },
@@ -397,101 +407,224 @@ client.on("interactionCreate", async interaction => {
   );
 
   const requestCount = counter.count;
+  const host = await client.users.fetch(hostId);
 
-  const matchEmbed = interaction.message.embeds[0];
+  const { level, rank, playstyle } = parseLevelRankPlaystyle(gameplay);
+  const { vc, language } = parseCommunication(comm);
 
   const embed = new EmbedBuilder()
     .setColor("#22C55E")
     .setTitle("🔔 New Play Request")
     .setDescription(
-      `👤 **Player:** ${requester}\n\n` +
-      `📨 **Total Requests: ${requestCount}**\n\n` +
-      `Wants to join this match:\n\n` +
-      matchEmbed.description
+      `👤 **Player:** <@${requester.id}>\n` +
+      `📨 Total Requests: ${requestCount}\n\n` +
+      `• Level: ${level}\n` +
+      `• Rank: ${rank}\n` +
+      `• Playstyle: ${playstyle}\n` +
+      `• Ability: ${ability}\n` +
+      `• Region: ${region}\n` +
+      `• VC: ${vc}\n` +
+      `• Language: ${language}\n` +
+      `• Notes: ${notes || "None"}`
     );
 
   const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`accept_${requester.id}`).setLabel("Accept").setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId(`decline_${requester.id}`).setLabel("Decline").setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId(`sendlink_${requester.id}`).setLabel("Send Private Server Link").setStyle(ButtonStyle.Primary)
+    new ButtonBuilder().setCustomId(`accept_${requester.id}_${hostId}`).setLabel("Accept").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`decline_${requester.id}_${hostId}`).setLabel("Decline").setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`sendlink_${requester.id}_${hostId}`).setLabel("Send Server Link").setStyle(ButtonStyle.Primary)
   );
 
-  const channel = client.channels.cache.get(MATCHMAKING_CHANNEL_ID);
-  await channel.send({ content: `<@${hostId}>`, embeds: [embed], components: [row] });
+  const dm = await host.send({ embeds: [embed], components: [row] });
+  autoDelete(dm);
 
-  return interaction.reply({ content: "Request sent!", ephemeral: true });
+  const done = await interaction.reply({
+    ephemeral: true,
+    content: "Your request was sent!"
+  });
+  autoDelete(done);
 });
 
-// ================================================================
-// ACCEPT / DECLINE
-// ================================================================
+// ------------------------------------------------------
+// MULTI-PLAYER MATCH CHANNEL SYSTEM
+// ------------------------------------------------------
+const activeMatchChannels = new Map();
+
 client.on("interactionCreate", async interaction => {
   if (!interaction.isButton()) return;
 
-  if (interaction.customId.startsWith("accept_")) {
-    const uid = interaction.customId.replace("accept_", "");
-    const user = await client.users.fetch(uid).catch(() => {});
-    await user.send("Your play request was **accepted**!").catch(() => {});
-    return interaction.reply({ content: "Accepted.", ephemeral: true });
+  const [type, playerId, hostId] = interaction.customId.split("_");
+
+  if (type !== "accept" && type !== "decline") return;
+
+  const guild = interaction.guild;
+  const host = interaction.user;
+  const player = await client.users.fetch(playerId);
+
+  // DECLINE
+  if (type === "decline") {
+    const dm = await player.send("❌ Your request was declined.");
+    autoDelete(dm);
+
+    const ep = await interaction.reply({ ephemeral: true, content: "Declined." });
+    autoDelete(ep);
+    return;
   }
 
-  if (interaction.customId.startsWith("decline_")) {
-    const uid = interaction.customId.replace("decline_", "");
-    const user = await client.users.fetch(uid).catch(() => {});
-    await user.send("Your play request was **declined**.").catch(() => {});
-    return interaction.reply({ content: "Declined.", ephemeral: true });
+  // ACCEPT
+  let channelId = activeMatchChannels.get(hostId);
+  let channel;
+
+  if (channelId) {
+    channel = guild.channels.cache.get(channelId);
+    if (channel) {
+      await channel.permissionOverwrites.edit(playerId, {
+        ViewChannel: true,
+        SendMessages: true
+      });
+    }
   }
+
+  if (!channelId || !channel) {
+    let category = guild.channels.cache.find(
+      c => c.name === CATEGORY_NAME && c.type === 4
+    );
+
+    if (!category) {
+      category = await guild.channels.create({ name: CATEGORY_NAME, type: 4 });
+    }
+
+    channel = await guild.channels.create({
+      name: `matchmaking-${host.username}`,
+      type: 0,
+      parent: category.id,
+      permissionOverwrites: [
+        { id: guild.id, deny: ["ViewChannel"] },
+        { id: hostId, allow: ["ViewChannel", "SendMessages"] },
+        { id: playerId, allow: ["ViewChannel", "SendMessages"] }
+      ]
+    });
+
+    activeMatchChannels.set(hostId, channel.id);
+
+    const finish = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`finishmatch_${hostId}`)
+        .setLabel("Finish Match")
+        .setStyle(ButtonStyle.Danger)
+    );
+
+    await channel.send({
+      content: "The host can finish the match anytime:",
+      components: [finish]
+    });
+  }
+
+  const dm = await player.send("✅ Your request was accepted! You were added to the match channel.");
+  autoDelete(dm);
+
+  const ep = await interaction.reply({
+    ephemeral: true,
+    content: `Player added: <@${playerId}>`
+  });
+  autoDelete(ep);
+
+  await channel.send(`🎉 <@${playerId}> joined the match with Host <@${hostId}>!`);
 });
 
-// ================================================================
-// PRIVATE LINK MODAL
-// ================================================================
+// ------------------------------------------------------
+// SEND SERVER LINK — MODAL
+// ------------------------------------------------------
 client.on("interactionCreate", async interaction => {
   if (!interaction.isButton()) return;
   if (!interaction.customId.startsWith("sendlink_")) return;
 
-  const uid = interaction.customId.replace("sendlink_", "");
+  const playerId = interaction.customId.split("_")[1];
 
   const modal = new ModalBuilder()
-    .setCustomId(`privatelink_${uid}`)
+    .setCustomId(`privatelink_${playerId}`)
     .setTitle("Send Private Server Link");
 
-  modal.addComponents(
-    new ActionRowBuilder().addComponents(
-      new TextInputBuilder()
-        .setCustomId("link")
-        .setLabel("Roblox Private Server Link")
-        .setPlaceholder("https://www.roblox.com/…")
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true)
-    )
-  );
+  const input = new TextInputBuilder()
+    .setCustomId("link")
+    .setLabel("Roblox Private Link")
+    .setPlaceholder("https://www.roblox.com/…")
+    .setRequired(true)
+    .setStyle(TextInputStyle.Short);
 
-  return interaction.showModal(modal);
+  modal.addComponents(new ActionRowBuilder().addComponents(input));
+
+  interaction.showModal(modal);
 });
 
+// ------------------------------------------------------
+// VALIDATE SERVER LINK + SEND DM
+// ------------------------------------------------------
 client.on("interactionCreate", async interaction => {
   if (!interaction.isModalSubmit()) return;
   if (!interaction.customId.startsWith("privatelink_")) return;
 
-  const uid = interaction.customId.replace("privatelink_", "");
-  const user = await client.users.fetch(uid).catch(() => {});
+  const playerId = interaction.customId.split("_")[1];
   const link = interaction.fields.getTextInputValue("link");
+  const player = await client.users.fetch(playerId);
 
   if (!link.startsWith("https://www.roblox.com/")) {
+    const err = await interaction.reply({
+      ephemeral: true,
+      content: "❌ Invalid link. Must start with: https://www.roblox.com/"
+    });
+    autoDelete(err);
+    return;
+  }
+
+  const dm = await player.send(`🔗 **Private Server Link:**\n${link}`);
+  autoDelete(dm);
+
+  const ep = await interaction.reply({
+    ephemeral: true,
+    content: "Link sent!"
+  });
+  autoDelete(ep);
+});
+
+// ------------------------------------------------------
+// FINISH MATCH — DELETE CHANNEL
+// ------------------------------------------------------
+client.on("interactionCreate", async interaction => {
+  if (!interaction.isButton()) return;
+  if (!interaction.customId.startsWith("finishmatch_")) return;
+
+  const hostId = interaction.customId.split("_")[1];
+
+  if (interaction.user.id !== hostId) {
     return interaction.reply({
-      content: "❌ Link must start with https://www.roblox.com/",
-      ephemeral: true
+      ephemeral: true,
+      content: "❌ Only the host can finish the match."
     });
   }
 
-  await user.send(`Here is your private server link:\n${link}`).catch(() => {});
+  const channel = interaction.channel;
 
-  return interaction.reply({
-    content: "Private server link sent!",
-    ephemeral: true
+  for (const [memberId, member] of channel.members) {
+    if (member.user.bot) continue;
+
+    try {
+      const dm = await member.send("🏁 The match has ended. The channel will be deleted.");
+      autoDelete(dm);
+    } catch {}
+  }
+
+  const ep = await interaction.reply({
+    ephemeral: true,
+    content: "Match closed. Channel will be removed."
   });
+  autoDelete(ep);
+
+  setTimeout(() => channel.delete().catch(() => {}), 2000);
+
+  activeMatchChannels.delete(hostId);
 });
 
-// ================================================================
+// ------------------------------------------------------
+// BOT LOGIN
+// ------------------------------------------------------
 client.login(process.env.BOT_TOKEN);
