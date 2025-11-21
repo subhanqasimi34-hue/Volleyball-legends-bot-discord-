@@ -1,5 +1,5 @@
 // ======================================================
-//  VOLLEY LEGENDS MATCHMAKING BOT — FIXED VERSION
+//  VOLLEY LEGENDS MATCHMAKING BOT — DM ACCEPT FIXED
 // ======================================================
 
 import {
@@ -83,6 +83,7 @@ const client = new Client({
 // ------------------------------------------------------
 // CONFIG
 // ------------------------------------------------------
+const SERVER_ID = "1439709824773263503"; // <=== FIXED
 const MATCHMAKING_CHANNEL_ID = "1441139756007161906";
 const FIND_PLAYERS_CHANNEL_ID = "1441140684622008441";
 const CATEGORY_NAME = "Matchmaking";
@@ -117,10 +118,6 @@ function parseCommunication(text) {
   if (l) language = l;
 
   return { vc, language };
-}
-
-function autoDelete(msg) {
-  setTimeout(() => msg.delete().catch(() => {}), 5 * 60 * 1000);
 }
 
 // ------------------------------------------------------
@@ -425,7 +422,7 @@ client.on("interactionCreate", async i => {
 });
 
 // ------------------------------------------------------
-// ACCEPT / DECLINE SYSTEM (UPDATED FOR DM SUPPORT)
+// ACCEPT / DECLINE SYSTEM — FULLY FIXED FOR DMs
 // ------------------------------------------------------
 client.on("interactionCreate", async i => {
   if (!i.isButton()) return;
@@ -433,13 +430,13 @@ client.on("interactionCreate", async i => {
   const [type, playerId, hostId] = i.customId.split("_");
   if (type !== "accept" && type !== "decline") return;
 
-  // Always use main server ID (fixes DM accept)
-  const guild = client.guilds.cache.get("1439709824773263503");
+  // Always use main server even when clicked in DM
+  const guild = client.guilds.cache.get(SERVER_ID);
 
   if (!guild) {
     return i.reply({
       ephemeral: true,
-      content: "❌ Server not found. Contact the bot owner."
+      content: "❌ Server not found."
     });
   }
 
@@ -458,12 +455,12 @@ client.on("interactionCreate", async i => {
   let active = await ActiveMatch.findOne({ hostId });
   let channel;
 
-  if (active) {
-    channel = guild.channels.cache.get(active.channelId);
-  }
+  if (active) channel = guild.channels.cache.get(active.channelId);
 
   if (!active || !channel) {
-    let category = guild.channels.cache.find(c => c.name === CATEGORY_NAME && c.type === 4);
+    let category = guild.channels.cache.find(
+      c => c.name === CATEGORY_NAME && c.type === 4
+    );
     if (!category) {
       category = await guild.channels.create({
         name: CATEGORY_NAME,
@@ -520,7 +517,6 @@ client.on("interactionCreate", async i => {
     if (!c) return;
 
     await ActiveMatch.deleteOne({ hostId }).catch(() => {});
-
     c.delete().catch(() => {});
   }, 3 * 60 * 1000);
 });
