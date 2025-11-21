@@ -137,7 +137,6 @@ client.once("ready", async () => {
 client.on("interactionCreate", async i => {
   if (!i.isButton()) return;
 
-  // CREATE MATCH
   if (i.customId === "create_match") {
     return i.reply({
       ephemeral: true,
@@ -157,7 +156,10 @@ client.on("interactionCreate", async i => {
   }
 
   if (i.customId === "reuse_yes" || i.customId === "reuse_no") {
-    const data = i.customId === "reuse_yes" ? await HostStats.findOne({ userId: i.user.id }) : null;
+    const data = i.customId === "reuse_yes"
+      ? await HostStats.findOne({ userId: i.user.id })
+      : null;
+
     return showHostModal(i, data);
   }
 });
@@ -319,7 +321,7 @@ client.on("interactionCreate", async i => {
   const { vc, language } = parseCommunication(comm);
 
   const embed = new EmbedBuilder()
-    .setColor("#22C55E")
+    .setColor("#2bff00ff")
     .setTitle("🔔 New Play Request")
     .setDescription(
       `👤 **Player:** <@${requester.id}>\n` +
@@ -340,7 +342,8 @@ client.on("interactionCreate", async i => {
   );
 
   try {
-    await host.send({ embeds: [embed], components: [row] });
+    const msg = await host.send({ embeds: [embed], components: [row] });
+    setTimeout(() => msg.delete().catch(()=>{}), 60000);
   } catch {}
 
   return i.reply({ ephemeral: true, content: "Request sent!" });
@@ -357,13 +360,15 @@ client.on("interactionCreate", async i => {
   const host = i.user;
   const player = await client.users.fetch(playerId);
 
-  // DECLINE
   if (type === "decline") {
-    try { await player.send("❌ Your request was declined."); } catch {}
+    try {
+      const dm = await player.send("❌ Your request was declined.");
+      setTimeout(() => dm.delete().catch(()=>{}), 60000);
+    } catch {}
+
     return i.reply({ ephemeral: true, content: "Declined." });
   }
 
-  // ACCEPT — ALWAYS create channel IN SERVER
   let active = await ActiveMatch.findOne({ hostId });
   let channel;
 
@@ -396,7 +401,7 @@ client.on("interactionCreate", async i => {
     );
   } else {
     if (active.players.length >= 3) {
-      return i.reply({ ephemeral: true, content: "❌ Max players reached (3)." });
+      return i.reply({ ephemeral: true, content: "❌ Max players reached only (3)." });
     }
 
     await channel.permissionOverwrites.edit(playerId, {
@@ -409,12 +414,13 @@ client.on("interactionCreate", async i => {
   }
 
   try {
-    await player.send("✅ You were accepted! Check the group channel.");
+    const dm = await player.send("✅ You were accepted into the Match-Team! Check the group channel.");
+    setTimeout(() => dm.delete().catch(()=>{}), 60000);
   } catch {}
 
   await i.reply({ ephemeral: true, content: "Player added." });
 
-  await channel.send(`🎉 <@${playerId}> joined <@${hostId}>'s match!`);
+  await channel.send(`🎉 <@${playerId}> Match-player joined <@${hostId}>'s match!`);
 
   setTimeout(async () => {
     const c = guild.channels.cache.get(channel.id);
