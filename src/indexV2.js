@@ -1,7 +1,7 @@
 // ================================================================
 // indexV6.js – Volley Legends Matchmaking Bot (Final Optimized Edition)
 // Clean Unicode labels, DM requests, 1-minute DM auto-delete,
-// Strong Roblox VIP link validation, no emojis, no ephemeral overlays.
+// Strong Roblox VIP + Share link validation, only Volley Legends.
 // ================================================================
 
 import {
@@ -40,20 +40,28 @@ const HostStats = mongoose.model("HostStats", new mongoose.Schema({
   communication: String,
   notes: String
 }));
+
 const Cooldowns = mongoose.model("Cooldowns", new mongoose.Schema({
-  userId: String, hostId: String, timestamp: Number
+  userId: String,
+  hostId: String,
+  timestamp: Number
 }));
+
 const HostCooldown = mongoose.model("HostCooldown", new mongoose.Schema({
-  userId: String, timestamp: Number
+  userId: String,
+  timestamp: Number
 }));
+
 const RequestCounter = mongoose.model("RequestCounter", new mongoose.Schema({
-  hostId: String, count: Number
+  hostId: String,
+  count: Number
 }));
 
 // CLIENT
 const client = new Client({
   intents: [
-    GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
     GatewayIntentBits.DirectMessages
   ],
   partials: [Partials.Channel, Partials.Message, Partials.User]
@@ -61,7 +69,9 @@ const client = new Client({
 
 // AUTO DELETE DMs (1 min)
 client.on("messageCreate", async msg => {
-  if (!msg.guild) setTimeout(() => msg.delete().catch(() => {}), 60000);
+  if (!msg.guild) {
+    setTimeout(() => msg.delete().catch(() => {}), 60000);
+  }
 });
 
 // CHANNELS
@@ -71,26 +81,41 @@ const FIND_PLAYERS_CHANNEL_ID = "1441140684622008441";
 // PARSER HELPERS
 const parseGameplay = t => {
   const p = t.split("|").map(s => s.trim());
-  return { level: p[0] || "Unknown", rank: p[1] || "Unknown", playstyle: p[2] || "Unknown" };
-};
-const parseCommunication = t => {
-  const p = t.split("|").map(s => s.trim());
-  return { vc: p[0] || "Unknown", language: p[1] || "Unknown" };
+  return {
+    level: p[0] || "Unknown",
+    rank: p[1] || "Unknown",
+    playstyle: p[2] || "Unknown"
+  };
 };
 
-// RESET CHANNEL
+const parseCommunication = t => {
+  const p = t.split("|").map(s => s.trim());
+  return {
+    vc: p[0] || "Unknown",
+    language: p[1] || "Unknown"
+  };
+};
+
+// RESET MATCHMAKING CHANNEL
 async function resetMatchmakingChannel() {
   const ch = client.channels.cache.get(MATCHMAKING_CHANNEL_ID);
   if (!ch) return;
+
   const msgs = await ch.messages.fetch({ limit: 100 }).catch(() => {});
   if (msgs) await ch.bulkDelete(msgs).catch(() => {});
+
   const embed = new EmbedBuilder()
     .setColor("#22C55E")
     .setTitle("Volley Legends Matchmaking")
     .setDescription("Click **Create Match** to start.");
+
   const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId("create_match").setLabel("Create Match").setStyle(ButtonStyle.Success)
+    new ButtonBuilder()
+      .setCustomId("create_match")
+      .setLabel("Create Match")
+      .setStyle(ButtonStyle.Success)
   );
+
   await ch.send({ embeds: [embed], components: [row] });
 }
 
@@ -111,44 +136,59 @@ async function checkHostCooldown(id) {
 // CREATE MATCH BUTTON
 client.on("interactionCreate", async i => {
   if (!i.isButton() || i.customId !== "create_match") return;
+
   const cd = await checkHostCooldown(i.user.id);
   if (cd > 0) {
-   const s = await i.user.send(`You must wait **${cd} min** before creating again.`);
+    const s = await i.user.send(`You must wait **${cd} min** before creating again.`);
     setTimeout(() => s.delete().catch(() => {}), 60000);
+    return;
   }
+
   const stats = await HostStats.findOne({ userId: i.user.id });
   if (!stats) return openModal(i, false, null);
 
   const embed = new EmbedBuilder()
     .setColor("#22C55E")
     .setTitle("Reuse previous settings?")
-    .setDescription("Do you want to autofill from your last match?");
+    .setDescription("Do you want to autofill your last match settings?");
+
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId("reuse_yes").setLabel("Yes").setStyle(ButtonStyle.Success),
     new ButtonBuilder().setCustomId("reuse_no").setLabel("No").setStyle(ButtonStyle.Secondary)
   );
-  await i.deferReply({ ephemeral: true });
-  i.editReply({ embeds: [embed], components: [row] });
+
+  await i.reply({ embeds: [embed], components: [row], ephemeral: true });
 });
 
 // OPEN MODAL
 function openModal(i, autofill, data) {
   const m = new ModalBuilder().setCustomId("match_form").setTitle("Create Match");
+
   const fields = [
     ["gameplay", "Level | Rank | Playstyle", true, TextInputStyle.Short],
     ["ability", "Ability", true, TextInputStyle.Short],
     ["region", "Region", true, TextInputStyle.Short],
     ["comm", "VC | Language", true, TextInputStyle.Short],
     ["notes", "Notes", false, TextInputStyle.Paragraph]
-  ].map(f => {
+  ];
+
+  const rows = fields.map(([id, label, req, style]) => {
     const ti = new TextInputBuilder()
-      .setCustomId(f[0]).setLabel(f[1]).setRequired(f[2]).setStyle(f[3]);
-    if (autofill && data && data[f[0] === "comm" ? "communication" : f[0]]) {
-      ti.setValue(data[f[0] === "comm" ? "communication" : f[0]]);
+      .setCustomId(id)
+      .setLabel(label)
+      .setRequired(req)
+      .setStyle(style);
+
+    if (autofill && data) {
+      const key = id === "comm" ? "communication" : id;
+      if (data[key]) ti.setValue(data[key]);
     }
+
     return new ActionRowBuilder().addComponents(ti);
   });
-  m.addComponents(...fields);
+
+  m.addComponents(...rows);
+
   return i.showModal(m);
 }
 
@@ -166,13 +206,13 @@ client.on("interactionCreate", async i => {
 client.on("interactionCreate", async i => {
   if (!i.isModalSubmit() || i.customId !== "match_form") return;
 
-  const user = i.user;
   const gameplay = i.fields.getTextInputValue("gameplay");
   const ability = i.fields.getTextInputValue("ability");
   const region = i.fields.getTextInputValue("region");
   const comm = i.fields.getTextInputValue("comm");
   const notes = i.fields.getTextInputValue("notes");
 
+  const user = i.user;
   const gp = parseGameplay(gameplay);
   const cm = parseCommunication(comm);
 
@@ -181,7 +221,13 @@ client.on("interactionCreate", async i => {
     { gameplay, ability, region, communication: comm, notes },
     { upsert: true }
   );
-  await RequestCounter.findOneAndUpdate({ hostId: user.id }, { count: 0 }, { upsert: true });
+
+  await RequestCounter.findOneAndUpdate(
+    { hostId: user.id },
+    { count: 0 },
+    { upsert: true }
+  );
+
   await HostCooldown.findOneAndUpdate(
     { userId: user.id },
     { timestamp: Date.now() },
@@ -204,8 +250,7 @@ client.on("interactionCreate", async i => {
 ʟᴀɴɢᴜᴀɢᴇ: ${cm.language}
 
 ɴᴏᴛᴇs:
-${notes || "None"}
-`
+${notes || "None"}`
     );
 
   const btn = new ActionRowBuilder().addComponents(
@@ -215,8 +260,8 @@ ${notes || "None"}
   const ch = client.channels.cache.get(FIND_PLAYERS_CHANNEL_ID);
   await ch.send({ content: `${user}`, embeds: [embed], components: [btn] });
 
-const s = await i.user.send("Match created!");
-setTimeout(() => s.delete().catch(() => {}), 60000);
+  const s = await user.send("Match created!");
+  setTimeout(() => s.delete().catch(() => {}), 60000);
 });
 
 // PLAYER REQUEST
@@ -231,11 +276,13 @@ client.on("interactionCreate", async i => {
     { timestamp: Date.now() },
     { upsert: true }
   );
+
   const counter = await RequestCounter.findOneAndUpdate(
     { hostId },
     { $inc: { count: 1 } },
     { new: true, upsert: true }
   );
+
   const host = await client.users.fetch(hostId).catch(() => {});
   if (!host) return;
 
@@ -250,8 +297,7 @@ client.on("interactionCreate", async i => {
 
 Please send the Discord private server. It's ineeded!
 
-${matchEmbed.description}
-`
+${matchEmbed.description}`
     );
 
   const row = new ActionRowBuilder().addComponents(
@@ -262,8 +308,8 @@ ${matchEmbed.description}
 
   await host.send({ embeds: [embed], components: [row] }).catch(() => {});
 
- const s = await i.user.send("Request sent!");
-setTimeout(() => s.delete().catch(() => {}), 60000);
+  const s = await requester.send("Request sent!");
+  setTimeout(() => s.delete().catch(() => {}), 60000);
 });
 
 // ACCEPT / DECLINE
@@ -284,7 +330,6 @@ client.on("interactionCreate", async i => {
     if (u) u.send("Your request was declined.").catch(() => {});
     const m = await i.user.send("Declined.");
     setTimeout(() => m.delete().catch(() => {}), 60000);
-
   }
 });
 
@@ -293,6 +338,7 @@ client.on("interactionCreate", async i => {
   if (!i.isButton() || !i.customId.startsWith("link_")) return;
 
   const id = i.customId.replace("link_", "");
+
   const modal = new ModalBuilder()
     .setCustomId(`sendlink_${id}`)
     .setTitle("Private Server Link");
@@ -317,35 +363,34 @@ client.on("interactionCreate", async i => {
   const id = i.customId.replace("sendlink_", "");
   const link = i.fields.getTextInputValue("link");
 
-  // Volley Legends Place ID (only this game allowed)
+  // Volley Legends Place ID
   const GAME_ID = "17242062041";
 
-  // Share link (game-agnostic but Roblox auto-restricts it)
+  // VIP Private server link
+  const vipRegex =
+    new RegExp(`^https:\\/\\/www\\.roblox\\.com\\/games\\/${GAME_ID}\\/[^\\/?]+\\?privateServerLinkCode=[A-Za-z0-9_-]+$`);
+
+  // Share server link
   const shareRegex =
     /^https:\/\/www\.roblox\.com\/share\?code=[A-Za-z0-9]+&type=Server$/;
 
-  // Validate links
   if (!vipRegex.test(link) && !shareRegex.test(link)) {
     const warn = await i.user.send(
       "Invalid link.\n\n" +
       "**Only Volley Legends private servers are allowed.**\n\n" +
-      "Accepted formats:\n\n" +
-      "Only Volleyball Legends links!:\n" +
-      "https://www.roblox.com/share?code=XXXX&type=Server"
+      "VIP:\nhttps://www.roblox.com/games/17242062041/NAME?privateServerLinkCode=XXXX\n\n" +
+      "Share:\nhttps://www.roblox.com/share?code=XXXX&type=Server"
     );
     setTimeout(() => warn.delete().catch(() => {}), 60000);
     return;
   }
 
-  // Send valid link to requested player
   const user = await client.users.fetch(id).catch(() => {});
   if (user) user.send(`Here is your private server link:\n${link}`).catch(() => {});
 
   const sent = await i.user.send("Private server link sent!");
   setTimeout(() => sent.delete().catch(() => {}), 60000);
 });
-
-
 
 // LOGIN
 client.login(process.env.BOT_TOKEN);
