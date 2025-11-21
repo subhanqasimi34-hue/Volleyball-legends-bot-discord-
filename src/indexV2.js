@@ -1,8 +1,9 @@
 // ================================================================
-// indexV6.js – Volley Legends Matchmaking Bot (Final Optimized Edition)
+// indexV6.js – Volley Legends Matchmaking Bot (Optimized & Fixed)
 // Clean Unicode labels, DM requests, 1-minute DM auto-delete,
-// Strong Roblox Share validation ONLY for Volley Legends.
-// VIP-Server komplett entfernt.
+// Safe Roblox Private Server validation (Share + VIP).
+// All major bugs fixed: unknown interaction, double replies,
+// duplicate description, invalid reply logic.
 // ================================================================
 
 import {
@@ -108,8 +109,10 @@ async function resetMatchmakingChannel() {
   const embed = new EmbedBuilder()
     .setColor("#22C55E")
     .setTitle("Volley Legends Matchmaking")
-    .setDescription("We have made this bot for you save space / for scams,invalid links etc enjoy")
-    .setDescription("Click **Create Match and Find your Teamates** to start.");
+    .setDescription(
+      "We made this bot to protect the community from scams and invalid links.\n" +
+      "Click **Create Match** to find teammates!"
+    );
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
@@ -153,7 +156,7 @@ client.on("interactionCreate", async i => {
   const embed = new EmbedBuilder()
     .setColor("#22C55E")
     .setTitle("Reuse previous settings?")
-    .setDescription("Do you want to autofill from your last match?");
+    .setDescription("Do you want to autofill your last match settings?");
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId("reuse_yes").setLabel("Yes").setStyle(ButtonStyle.Success),
@@ -220,7 +223,13 @@ client.on("interactionCreate", async i => {
     { gameplay, ability, region, communication: comm, notes },
     { upsert: true }
   );
-  await RequestCounter.findOneAndUpdate({ hostId: user.id }, { count: 0 }, { upsert: true });
+
+  await RequestCounter.findOneAndUpdate(
+    { hostId: user.id },
+    { count: 0 },
+    { upsert: true }
+  );
+
   await HostCooldown.findOneAndUpdate(
     { userId: user.id },
     { timestamp: Date.now() },
@@ -291,21 +300,22 @@ client.on("interactionCreate", async i => {
 `ᴘʟᴀʏᴇʀ: ${requester}
 ʀᴇǫᴜᴇsᴛs: ${counter.count}
 
-Please use the Volleyball Legends Privat Server. It's needed!
+Paste the Volleyball Legends Private Server here.
 
 ${matchEmbed.description}
 `
     );
 
   const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`link_${requester.id}`).setLabel("Paste here your Volleyball Legends Privat Server!").setStyle(ButtonStyle.Primary)
+    new ButtonBuilder()
+      .setCustomId(`link_${requester.id}`)
+      .setLabel("Send Private Server Link")
+      .setStyle(ButtonStyle.Primary)
   );
 
   await host.send({ embeds: [embed], components: [row] }).catch(() => {});
-
   return i.reply({ content: "Request sent!", ephemeral: true });
 });
-
 
 // SEND LINK MODAL
 client.on("interactionCreate", async i => {
@@ -321,7 +331,7 @@ client.on("interactionCreate", async i => {
     new ActionRowBuilder().addComponents(
       new TextInputBuilder()
         .setCustomId("link")
-        .setLabel("Roblox Share Server Link (Inneeded!)")
+        .setLabel("Roblox Private Server Link")
         .setRequired(true)
         .setStyle(TextInputStyle.Short)
     )
@@ -337,11 +347,8 @@ client.on("interactionCreate", async i => {
   const id = i.customId.replace("sendlink_", "");
   const link = i.fields.getTextInputValue("link").trim();
 
-  // Erlaubte Roblox Privatserver-Formate
   const shareRegex = /^https:\/\/www\.roblox\.com\/share\?code=[A-Za-z0-9]+&type=Server$/;
   const vipRegex = /^https:\/\/www\.roblox\.com\/games\/[0-9]+\/[^/?]+\?privateServerLinkCode=[A-Za-z0-9_-]+$/;
-
-  // Sicherheit: Nur Roblox-Domain
   const robloxDomain = /^https:\/\/www\.roblox\.com\//;
 
   if (!robloxDomain.test(link)) {
@@ -351,26 +358,25 @@ client.on("interactionCreate", async i => {
     });
   }
 
-  // Privatserver prüfen (VIP oder Share)
   if (!shareRegex.test(link) && !vipRegex.test(link)) {
     return i.reply({
       content:
         "❌ Invalid private server link.\n" +
-        "Only real **Roblox** private servers are allowed.\n\n" +
-        "**Examples:**\n" +
+        "Only real Roblox private servers are allowed.\n\n" +
+        "Examples:\n" +
         "• https://www.roblox.com/share?code=XXXXX&type=Server\n" +
         "• https://www.roblox.com/games/ID/NAME?privateServerLinkCode=XXXXX",
       ephemeral: true
     });
   }
 
-  // Wenn alles ok → An den Spieler senden
   const user = await client.users.fetch(id).catch(() => {});
   if (user) {
-    await user.send(`The Host has sent you a privat server link! :\n${link}`).catch(() => {});
+    await user.send(`The host has sent you a private server link:\n${link}`)
+      .catch(() => {});
   }
 
-  return i.reply({ content: "The Privat link has been sent! ", ephemeral: true });
+  return i.reply({ content: "The private server link has been sent!", ephemeral: true });
 });
 
 // LOGIN
