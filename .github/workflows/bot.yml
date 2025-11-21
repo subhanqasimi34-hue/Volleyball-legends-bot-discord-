@@ -18,23 +18,20 @@ jobs:
         with:
           node-version: 18
 
-      # Install dependencies
       - name: Install dependencies
         run: npm install
 
-      # Download cloudflared
+    
       - name: Download cloudflared
         run: |
           curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o cloudflared
           chmod +x cloudflared
 
-      # Start the Cloudflare Tunnel
       - name: Start Cloudflare Tunnel
         run: ./cloudflared tunnel run --token "$TUNNEL_TOKEN" &
         env:
           TUNNEL_TOKEN: ${{ secrets.TUNNEL_TOKEN }}
 
-      # Start the Discord bot
       - name: Start Discord Bot
         run: |
           node src/indexV2.js &
