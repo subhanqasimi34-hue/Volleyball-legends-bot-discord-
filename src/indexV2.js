@@ -1,7 +1,6 @@
 // ================================================================
-// indexV8.js – Volley Legends Matchmaking Bot (Premium Edition)
-// Upgraded: Fixed player requests, fixed host ID detection, improved embeds,
-// player modal, host modal, autofill, clean UI.
+// indexV9.js – Volley Legends Matchmaking Bot (Premium Edition)
+// Clean UI, Reuse Stats, Player Autofill, NEW EMOJIS
 // ================================================================
 
 import {
@@ -38,7 +37,7 @@ mongoose
   .catch(err => console.log("MongoDB Error:", err));
 
 // ================================================================
-// MONGO SCHEMAS
+// SCHEMAS
 // ================================================================
 const statsSchema = {
   userId: { type: String, required: true, unique: true },
@@ -80,7 +79,7 @@ const client = new Client({
 });
 
 // ================================================================
-// CHANNEL CONFIG
+// CHANNELS
 // ================================================================
 const MATCHMAKING_CHANNEL_ID = "1441139756007161906";
 const FIND_PLAYERS_CHANNEL_ID = "1441140684622008441";
@@ -90,7 +89,10 @@ const FIND_PLAYERS_CHANNEL_ID = "1441140684622008441";
 // ================================================================
 function parseLevelRankPlaystyle(text) {
   const parts = text.split("|").map(p => p.trim());
-  let level = "Unknown", rank = "Unknown", playstyle = "Unknown";
+
+  let level = "Unknown";
+  let rank = "Unknown";
+  let playstyle = "Unknown";
 
   const lvl = parts.find(p => /^\d{1,4}$/i.test(p));
   if (lvl) level = lvl;
@@ -106,14 +108,14 @@ function parseLevelRankPlaystyle(text) {
 
 function parseCommunication(text) {
   const parts = text.split("|").map(p => p.trim());
-  let vc = "Unknown", language = "Unknown";
+
+  let vc = "Unknown";
+  let language = "Unknown";
 
   const vcPart = parts.find(p => /(yes|no|vc|voice)/i.test(p));
   if (vcPart) vc = vcPart;
 
-  const lang = parts.find(p =>
-    /(eng|english|german|de|fr|turkish|spanish|arabic)/i.test(p)
-  );
+  const lang = parts.find(p => /(eng|english|german|de|fr|turkish|spanish|arabic)/i.test(p));
   if (lang) language = lang;
 
   return { vc, language };
@@ -145,8 +147,6 @@ async function resetMatchmakingChannel() {
 }
 
 // ================================================================
-// READY
-// ================================================================
 client.once("ready", async () => {
   console.log(`Logged in as ${client.user.tag}`);
   await resetMatchmakingChannel();
@@ -158,6 +158,7 @@ client.once("ready", async () => {
 async function checkHostCooldown(userId) {
   const entry = await HostCooldown.findOne({ userId });
   if (!entry) return 0;
+
   const diff = Date.now() - entry.timestamp;
   return diff >= 5 * 60 * 1000 ? 0 : Math.ceil((5 * 60 * 1000 - diff) / 60000);
 }
@@ -166,21 +167,34 @@ async function checkHostCooldown(userId) {
 // CREATE MATCH BUTTON
 // ================================================================
 client.on("interactionCreate", async interaction => {
-  if (!interaction.isButton()) return;
-  if (interaction.customId !== "create_match") return;
+  if (!interaction.isButton() || interaction.customId !== "create_match") return;
 
   const cd = await checkHostCooldown(interaction.user.id);
-  if (cd > 0) {
+  if (cd > 0)
     return interaction.reply({
       content: `❌ You must wait **${cd} minute(s)** before creating another match.`,
       ephemeral: true
     });
-  }
 
   await resetMatchmakingChannel();
 
   const oldStats = await HostStats.findOne({ userId: interaction.user.id });
-  openHostModal(interaction, !!oldStats, oldStats);
+
+  if (oldStats) {
+    const ask = new EmbedBuilder()
+      .setColor("#22C55E")
+      .setTitle("♻️ Reuse last stats?")
+      .setDescription("Do you want to reuse your last stats?");
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("reuse_yes").setLabel("Yes").setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId("reuse_no").setLabel("No").setStyle(ButtonStyle.Secondary)
+    );
+
+    return interaction.reply({ embeds: [ask], components: [row], ephemeral: true });
+  }
+
+  openHostModal(interaction, false, null);
 });
 
 // ================================================================
@@ -215,12 +229,23 @@ function openHostModal(interaction, autofill, data) {
   interaction.showModal(modal);
 }
 
+client.on("interactionCreate", async interaction => {
+  if (!interaction.isButton()) return;
+
+  if (interaction.customId === "reuse_yes") {
+    const stats = await HostStats.findOne({ userId: interaction.user.id });
+    return openHostModal(interaction, true, stats);
+  }
+
+  if (interaction.customId === "reuse_no")
+    return openHostModal(interaction, false, null);
+});
+
 // ================================================================
 // HOST FORM SUBMIT
 // ================================================================
 client.on("interactionCreate", async interaction => {
-  if (!interaction.isModalSubmit()) return;
-  if (interaction.customId !== "host_form") return;
+  if (!interaction.isModalSubmit() || interaction.customId !== "host_form") return;
 
   const user = interaction.user;
 
@@ -257,15 +282,15 @@ client.on("interactionCreate", async interaction => {
     .setDescription(
       `👤 **Host:** <@${user.id}>\n\n` +
       `📌 **Stats:**\n` +
-      `• 📊 Level: ${level}\n` +
-      `• 🏅 Rank: ${rank}\n` +
-      `• 🎮 Playstyle: ${playstyle}\n\n` +
+      `• 🏐 Level: ${level}\n` +
+      `• 🏆 Rank: ${rank}\n` +
+      `• 🎯 Playstyle: ${playstyle}\n\n` +
       `📌 **Profile:**\n` +
       `• ⚡ Ability: ${ability}\n` +
       `• 🌍 Region: ${region}\n` +
-      `• 🎤 VC: ${vc}\n` +
-      `• 🗣️ Language: ${language}\n\n` +
-      `📝 **Notes:**\n${notes || "None"}`
+      `• 🎧 VC: ${vc}\n` +
+      `• 💬 Language: ${language}\n\n` +
+      `📝 Notes:\n${notes || "None"}`
     );
 
   const btn = new ActionRowBuilder().addComponents(
@@ -275,34 +300,33 @@ client.on("interactionCreate", async interaction => {
       .setStyle(ButtonStyle.Success)
   );
 
-  const channel = client.channels.cache.get(FIND_PLAYERS_CHANNEL_ID);
-  await channel.send({ content: `<@${user.id}>`, embeds: [embed], components: [btn] });
+  const ch = client.channels.cache.get(FIND_PLAYERS_CHANNEL_ID);
+  await ch.send({ content: `<@${user.id}>`, embeds: [embed], components: [btn] });
 
   interaction.reply({ content: "Match created!", ephemeral: true });
 });
 
 // ================================================================
-// PLAYER REQUEST BUTTON → OPEN PLAYER MODAL
+// PLAYER REQUEST → MODAL
 // ================================================================
 client.on("interactionCreate", async interaction => {
-  if (!interaction.isButton()) return;
-  if (!interaction.customId.startsWith("request_")) return;
+  if (!interaction.isButton() || !interaction.customId.startsWith("request_"))
+    return;
 
   const hostId = interaction.customId.split("_")[1];
-  const requester = interaction.user;
+  const user = interaction.user;
 
-  const cdEntry = await Cooldowns.findOne({ userId: requester.id, hostId });
-  if (cdEntry && Date.now() - cdEntry.timestamp < 5 * 60 * 1000) {
-    const minutes = Math.ceil(
-      (5 * 60 * 1000 - (Date.now() - cdEntry.timestamp)) / 60000
-    );
+  const cd = await Cooldowns.findOne({ userId: user.id, hostId });
+  if (cd && Date.now() - cd.timestamp < 5 * 60000) {
     return interaction.reply({
-      content: `❌ You must wait **${minutes} minute(s)** before sending another request.`,
+      content: `❌ You must wait **${Math.ceil(
+        (5 * 60000 - (Date.now() - cd.timestamp)) / 60000
+      )} minute(s)** before sending another request.`,
       ephemeral: true
     });
   }
 
-  const oldStats = await PlayerStats.findOne({ userId: requester.id });
+  const oldStats = await PlayerStats.findOne({ userId: user.id });
   openPlayerModal(interaction, !!oldStats, oldStats, hostId);
 });
 
@@ -339,14 +363,14 @@ function openPlayerModal(interaction, autofill, data, hostId) {
 }
 
 // ================================================================
-// PLAYER FORM SUBMIT
+// PLAYER SUBMIT REQUEST
 // ================================================================
 client.on("interactionCreate", async interaction => {
-  if (!interaction.isModalSubmit()) return;
-  if (!interaction.customId.startsWith("player_form_")) return;
+  if (!interaction.isModalSubmit() || !interaction.customId.startsWith("player_form_"))
+    return;
 
   const hostId = interaction.customId.split("_")[2];
-  const requester = interaction.user;
+  const user = interaction.user;
 
   const gameplay = interaction.fields.getTextInputValue("p_gameplay");
   const ability = interaction.fields.getTextInputValue("p_ability");
@@ -355,13 +379,13 @@ client.on("interactionCreate", async interaction => {
   const notes = interaction.fields.getTextInputValue("p_notes");
 
   await PlayerStats.findOneAndUpdate(
-    { userId: requester.id },
+    { userId: user.id },
     { gameplay, ability, region, communication: comm, notes },
     { upsert: true }
   );
 
   await Cooldowns.findOneAndUpdate(
-    { userId: requester.id, hostId },
+    { userId: user.id, hostId },
     { timestamp: Date.now() },
     { upsert: true }
   );
@@ -369,15 +393,10 @@ client.on("interactionCreate", async interaction => {
   const counter = await RequestCounter.findOneAndUpdate(
     { hostId },
     { $inc: { count: 1 } },
-    { new: true, upsert: true }
+    { upsert: true, new: true }
   );
 
-  const requestCount = counter.count;
-
-  // Extract host match embed (original)
-  const message = await interaction.channel.messages.fetch(interaction.message.id).catch(() => null);
-
-  const matchEmbed = message?.embeds[0];
+  const mmChannel = client.channels.cache.get(MATCHMAKING_CHANNEL_ID);
 
   const { level, rank, playstyle } = parseLevelRankPlaystyle(gameplay);
   const { vc, language } = parseCommunication(comm);
@@ -386,27 +405,25 @@ client.on("interactionCreate", async interaction => {
     .setColor("#22C55E")
     .setTitle("🔔 New Play Request")
     .setDescription(
-      `👤 **Player:** <@${requester.id}>\n` +
-      `📨 **Total Requests:** ${requestCount}\n\n` +
+      `👤 **Player:** <@${user.id}>\n` +
+      `📨 **Total Requests:** ${counter.count}\n\n` +
       `📌 **Player Stats:**\n` +
-      `• 📊 Level: ${level}\n` +
-      `• 🏅 Rank: ${rank}\n` +
-      `• 🎮 Playstyle: ${playstyle}\n` +
+      `• 🏐 Level: ${level}\n` +
+      `• 🏆 Rank: ${rank}\n` +
+      `• 🎯 Playstyle: ${playstyle}\n` +
       `• ⚡ Ability: ${ability}\n` +
       `• 🌍 Region: ${region}\n` +
-      `• 🎤 VC: ${vc}\n` +
-      `• 🗣️ Language: ${language}\n` +
-      `• 📝 Notes: ${notes || "None"}\n\n` +
-      `📌 **Match Host:**\n${matchEmbed?.description || "N/A"}`
+      `• 🎧 VC: ${vc}\n` +
+      `• 💬 Language: ${language}\n` +
+      `• 📝 Notes: ${notes || "None"}\n`
     );
 
   const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`accept_${requester.id}`).setLabel("Accept").setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId(`decline_${requester.id}`).setLabel("Decline").setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId(`sendlink_${requester.id}`).setLabel("Send Private Server Link").setStyle(ButtonStyle.Primary)
+    new ButtonBuilder().setCustomId(`accept_${user.id}`).setLabel("Accept").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`decline_${user.id}`).setLabel("Decline").setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`sendlink_${user.id}`).setLabel("Send Private Server Link").setStyle(ButtonStyle.Primary)
   );
 
-  const mmChannel = client.channels.cache.get(MATCHMAKING_CHANNEL_ID);
   await mmChannel.send({ content: `<@${hostId}>`, embeds: [embed], components: [row] });
 
   interaction.reply({ content: "Request sent!", ephemeral: true });
@@ -422,23 +439,23 @@ client.on("interactionCreate", async interaction => {
     const uid = interaction.customId.replace("accept_", "");
     const user = await client.users.fetch(uid);
     await user.send("Your request was **accepted**!");
-    interaction.reply({ content: "Accepted!", ephemeral: true });
+    return interaction.reply({ content: "Accepted.", ephemeral: true });
   }
 
   if (interaction.customId.startsWith("decline_")) {
     const uid = interaction.customId.replace("decline_", "");
     const user = await client.users.fetch(uid);
     await user.send("Your request was **declined**.");
-    interaction.reply({ content: "Declined!", ephemeral: true });
+    return interaction.reply({ content: "Declined.", ephemeral: true });
   }
 });
 
 // ================================================================
-// SEND PRIVATE SERVER LINK
+// PRIVATE SERVER LINK
 // ================================================================
 client.on("interactionCreate", async interaction => {
-  if (!interaction.isButton()) return;
-  if (!interaction.customId.startsWith("sendlink_")) return;
+  if (!interaction.isButton() || !interaction.customId.startsWith("sendlink_"))
+    return;
 
   const uid = interaction.customId.replace("sendlink_", "");
 
@@ -461,8 +478,8 @@ client.on("interactionCreate", async interaction => {
 });
 
 client.on("interactionCreate", async interaction => {
-  if (!interaction.isModalSubmit()) return;
-  if (!interaction.customId.startsWith("privatelink_")) return;
+  if (!interaction.isModalSubmit() || !interaction.customId.startsWith("privatelink_"))
+    return;
 
   const uid = interaction.customId.replace("privatelink_", "");
   const user = await client.users.fetch(uid);
