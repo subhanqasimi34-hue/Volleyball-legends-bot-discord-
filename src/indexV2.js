@@ -8,7 +8,9 @@ import {
   ButtonStyle,
   ModalBuilder,
   TextInputBuilder,
-  TextInputStyle
+  TextInputStyle,
+  ChannelType,
+  PermissionFlagsBits
 } from "discord.js";
 
 import mongoose from "mongoose";
@@ -17,7 +19,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 // ------------------------------------------------------
-// EXPRESS KEEPALIVE (UPTIME ROBOT / CLOUDFLARE)
+// EXPRESS KEEPALIVE
 // ------------------------------------------------------
 const app = express();
 app.get("/", (req, res) => res.send("Volley Legends Bot Running"));
@@ -55,7 +57,6 @@ const RequestCounter = mongoose.model("RequestCounter",
   new mongoose.Schema({ hostId: String, count: Number })
 );
 
-// one channel per host
 const ActiveMatch = mongoose.model("ActiveMatch",
   new mongoose.Schema({
     hostId: String,
@@ -107,7 +108,9 @@ function parseCommunication(text) {
   const v = p.find(x => /(vc|voice|yes|no)/i.test(x));
   if (v) vc = v;
 
-  const l = p.find(x => /(eng|english|german|de|turkish|spanish|arabic)/i.test(x));
+  const l = p.find(x =>
+    /(eng|english|german|de|turkish|spanish|arabic)/i.test(x)
+  );
   if (l) language = l;
 
   return { vc, language };
@@ -445,7 +448,7 @@ client.on("interactionCreate", async interaction => {
 });
 
 // ------------------------------------------------------
-// MULTI-PLAYER MATCH CHANNEL SYSTEM
+// MULTI-PLAYER MATCH CHANNEL SYSTEM (FIXED VERSION)
 // ------------------------------------------------------
 const activeMatchChannels = new Map();
 
@@ -457,7 +460,16 @@ client.on("interactionCreate", async interaction => {
   if (type !== "accept" && type !== "decline") return;
 
   const guild = interaction.guild;
-  const host = interaction.user;
+
+  // host validation
+  if (interaction.user.id !== hostId) {
+    return interaction.reply({
+      ephemeral: true,
+      content: "❌ Only the host can press this."
+    });
+  }
+
+  const host = await client.users.fetch(hostId);
   const player = await client.users.fetch(playerId);
 
   // DECLINE
@@ -486,21 +498,24 @@ client.on("interactionCreate", async interaction => {
 
   if (!channelId || !channel) {
     let category = guild.channels.cache.find(
-      c => c.name === CATEGORY_NAME && c.type === 4
+      c => c.name === CATEGORY_NAME && c.type === ChannelType.GuildCategory
     );
 
     if (!category) {
-      category = await guild.channels.create({ name: CATEGORY_NAME, type: 4 });
+      category = await guild.channels.create({
+        name: CATEGORY_NAME,
+        type: ChannelType.GuildCategory
+      });
     }
 
     channel = await guild.channels.create({
       name: `matchmaking-${host.username}`,
-      type: 0,
+      type: ChannelType.GuildText,
       parent: category.id,
       permissionOverwrites: [
-        { id: guild.id, deny: ["ViewChannel"] },
-        { id: hostId, allow: ["ViewChannel", "SendMessages"] },
-        { id: playerId, allow: ["ViewChannel", "SendMessages"] }
+        { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
+        { id: hostId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] },
+        { id: playerId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] }
       ]
     });
 
