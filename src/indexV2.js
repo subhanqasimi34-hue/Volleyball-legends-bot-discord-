@@ -1,6 +1,6 @@
 // ================================================================
 // indexV9.js – Volley Legends Matchmaking Bot (Premium Edition)
-// Clean UI, Reuse Stats, Player Autofill, NEW EMOJIS
+// DM Play Requests, Autofill, Stats Modal, Clean UI
 // ================================================================
 
 import {
@@ -22,24 +22,21 @@ import dotenv from "dotenv";
 dotenv.config();
 
 // ================================================================
-// EXPRESS SERVER
+// EXPRESS
 // ================================================================
 const app = express();
 app.get("/", (req, res) => res.send("Volley Legends Bot Running"));
 app.listen(3000, () => console.log("Express OK"));
 
 // ================================================================
-// MONGO CONNECTION
+// MONGO
 // ================================================================
 mongoose
   .connect(process.env.MONGO_URI, { dbName: "VolleyBot" })
   .then(() => console.log("MongoDB Connected"))
-  .catch(err => console.log("MongoDB Error:", err));
+  .catch(err => console.log("Mongo Error:", err));
 
-// ================================================================
-// SCHEMAS
-// ================================================================
-const statsSchema = {
+const StatsSchema = {
   userId: { type: String, required: true, unique: true },
   gameplay: String,
   ability: String,
@@ -48,8 +45,8 @@ const statsSchema = {
   notes: String
 };
 
-const HostStats = mongoose.model("HostStats", new mongoose.Schema(statsSchema));
-const PlayerStats = mongoose.model("PlayerStats", new mongoose.Schema(statsSchema));
+const HostStats = mongoose.model("HostStats", new mongoose.Schema(StatsSchema));
+const PlayerStats = mongoose.model("PlayerStats", new mongoose.Schema(StatsSchema));
 
 const Cooldowns = mongoose.model(
   "Cooldowns",
@@ -61,9 +58,12 @@ const HostCooldown = mongoose.model(
   new mongoose.Schema({ userId: String, timestamp: Number })
 );
 
-const RequestCounter = mongoose.model(
-  "RequestCounter",
-  new mongoose.Schema({ hostId: String, count: Number })
+const PendingRequests = mongoose.model(
+  "PendingRequests",
+  new mongoose.Schema({
+    hostId: String,
+    requests: Array
+  })
 );
 
 // ================================================================
@@ -79,7 +79,7 @@ const client = new Client({
 });
 
 // ================================================================
-// CHANNELS
+// CHANNEL CONFIG
 // ================================================================
 const MATCHMAKING_CHANNEL_ID = "1441139756007161906";
 const FIND_PLAYERS_CHANNEL_ID = "1441140684622008441";
@@ -87,49 +87,34 @@ const FIND_PLAYERS_CHANNEL_ID = "1441140684622008441";
 // ================================================================
 // HELPERS
 // ================================================================
-function parseLevelRankPlaystyle(text) {
+function parseStats(text) {
   const parts = text.split("|").map(p => p.trim());
-
-  let level = "Unknown";
-  let rank = "Unknown";
-  let playstyle = "Unknown";
-
-  const lvl = parts.find(p => /^\d{1,4}$/i.test(p));
-  if (lvl) level = lvl;
-
-  const rk = parts.find(p => /(bronze|silver|gold|diamond|elite|pro|i|ii|iii)/i.test(p));
-  if (rk) rank = rk;
-
-  const ps = parts.find(p => p !== lvl && p !== rk);
-  if (ps) playstyle = ps;
-
-  return { level, rank, playstyle };
+  return {
+    level: parts.find(p => /^\d{1,4}$/i.test(p)) || "Unknown",
+    rank: parts.find(p => /(bronze|silver|gold|diamond|elite|pro|i|ii|iii)/i.test(p)) || "Unknown",
+    playstyle: parts.reverse().find(p => !/(bronze|silver|gold|diamond|elite|pro|i|ii|iii|\d+)/i.test(p)) || "Unknown"
+  };
 }
 
-function parseCommunication(text) {
+function parseComm(text) {
   const parts = text.split("|").map(p => p.trim());
-
-  let vc = "Unknown";
-  let language = "Unknown";
-
-  const vcPart = parts.find(p => /(yes|no|vc|voice)/i.test(p));
-  if (vcPart) vc = vcPart;
-
-  const lang = parts.find(p => /(eng|english|german|de|fr|turkish|spanish|arabic)/i.test(p));
-  if (lang) language = lang;
-
-  return { vc, language };
+  return {
+    vc: parts.find(p => /(yes|no|vc)/i.test(p)) || "Unknown",
+    language: parts.find(p =>
+      /(eng|german|turkish|spanish|arabic|fr|de)/i.test(p)
+    ) || "Unknown"
+  };
 }
 
 // ================================================================
-// RESET MATCHMAKING CHANNEL
+// MATCHMAKING CHANNEL RESET
 // ================================================================
-async function resetMatchmakingChannel() {
-  const channel = client.channels.cache.get(MATCHMAKING_CHANNEL_ID);
-  if (!channel) return;
+async function resetMM() {
+  const ch = client.channels.cache.get(MATCHMAKING_CHANNEL_ID);
+  if (!ch) return;
 
-  const messages = await channel.messages.fetch({ limit: 100 }).catch(() => {});
-  if (messages) await channel.bulkDelete(messages).catch(() => {});
+  const msgs = await ch.messages.fetch({ limit: 100 }).catch(() => {});
+  if (msgs) await ch.bulkDelete(msgs).catch(() => {});
 
   const embed = new EmbedBuilder()
     .setColor("#22C55E")
@@ -143,64 +128,48 @@ async function resetMatchmakingChannel() {
       .setStyle(ButtonStyle.Success)
   );
 
-  await channel.send({ embeds: [embed], components: [row] });
+  await ch.send({ embeds: [embed], components: [row] });
 }
 
 // ================================================================
+// READY
+// ================================================================
 client.once("ready", async () => {
   console.log(`Logged in as ${client.user.tag}`);
-  await resetMatchmakingChannel();
+  await resetMM();
 });
 
 // ================================================================
 // HOST COOLDOWN
 // ================================================================
-async function checkHostCooldown(userId) {
-  const entry = await HostCooldown.findOne({ userId });
+async function hostCD(id) {
+  const entry = await HostCooldown.findOne({ userId: id });
   if (!entry) return 0;
-
   const diff = Date.now() - entry.timestamp;
-  return diff >= 5 * 60 * 1000 ? 0 : Math.ceil((5 * 60 * 1000 - diff) / 60000);
+  return diff >= 300000 ? 0 : Math.ceil((300000 - diff) / 60000);
 }
 
 // ================================================================
 // CREATE MATCH BUTTON
 // ================================================================
-client.on("interactionCreate", async interaction => {
-  if (!interaction.isButton() || interaction.customId !== "create_match") return;
+client.on("interactionCreate", async i => {
+  if (!i.isButton()) return;
+  if (i.customId !== "create_match") return;
 
-  const cd = await checkHostCooldown(interaction.user.id);
+  const cd = await hostCD(i.user.id);
   if (cd > 0)
-    return interaction.reply({
-      content: `❌ You must wait **${cd} minute(s)** before creating another match.`,
-      ephemeral: true
-    });
+    return i.reply({ content: `❌ Wait **${cd} min** before creating a new match.`, ephemeral: true });
 
-  await resetMatchmakingChannel();
+  await resetMM();
 
-  const oldStats = await HostStats.findOne({ userId: interaction.user.id });
-
-  if (oldStats) {
-    const ask = new EmbedBuilder()
-      .setColor("#22C55E")
-      .setTitle("♻️ Reuse last stats?")
-      .setDescription("Do you want to reuse your last stats?");
-
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId("reuse_yes").setLabel("Yes").setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId("reuse_no").setLabel("No").setStyle(ButtonStyle.Secondary)
-    );
-
-    return interaction.reply({ embeds: [ask], components: [row], ephemeral: true });
-  }
-
-  openHostModal(interaction, false, null);
+  const old = await HostStats.findOne({ userId: i.user.id });
+  openHostModal(i, !!old, old);
 });
 
 // ================================================================
 // HOST MODAL
 // ================================================================
-function openHostModal(interaction, autofill, data) {
+function openHostModal(i, autofill, data) {
   const modal = new ModalBuilder()
     .setCustomId("host_form")
     .setTitle("Create Match");
@@ -214,46 +183,35 @@ function openHostModal(interaction, autofill, data) {
   ];
 
   modal.addComponents(
-    ...fields.map(([id, label, value]) =>
+    ...fields.map(([id, label, val]) =>
       new ActionRowBuilder().addComponents(
         new TextInputBuilder()
           .setCustomId(id)
           .setLabel(label)
           .setStyle(label === "Notes" ? TextInputStyle.Paragraph : TextInputStyle.Short)
           .setRequired(id !== "notes")
-          .setValue(autofill && value ? value : "")
+          .setValue(autofill && val ? val : "")
       )
     )
   );
 
-  interaction.showModal(modal);
+  i.showModal(modal);
 }
-
-client.on("interactionCreate", async interaction => {
-  if (!interaction.isButton()) return;
-
-  if (interaction.customId === "reuse_yes") {
-    const stats = await HostStats.findOne({ userId: interaction.user.id });
-    return openHostModal(interaction, true, stats);
-  }
-
-  if (interaction.customId === "reuse_no")
-    return openHostModal(interaction, false, null);
-});
 
 // ================================================================
 // HOST FORM SUBMIT
 // ================================================================
-client.on("interactionCreate", async interaction => {
-  if (!interaction.isModalSubmit() || interaction.customId !== "host_form") return;
+client.on("interactionCreate", async i => {
+  if (!i.isModalSubmit()) return;
+  if (i.customId !== "host_form") return;
 
-  const user = interaction.user;
+  const user = i.user;
 
-  const gameplay = interaction.fields.getTextInputValue("gameplay");
-  const ability = interaction.fields.getTextInputValue("ability");
-  const region = interaction.fields.getTextInputValue("region");
-  const comm = interaction.fields.getTextInputValue("communication");
-  const notes = interaction.fields.getTextInputValue("notes");
+  const gameplay = i.fields.getTextInputValue("gameplay");
+  const ability = i.fields.getTextInputValue("ability");
+  const region = i.fields.getTextInputValue("region");
+  const comm = i.fields.getTextInputValue("communication");
+  const notes = i.fields.getTextInputValue("notes");
 
   await HostStats.findOneAndUpdate(
     { userId: user.id },
@@ -267,14 +225,8 @@ client.on("interactionCreate", async interaction => {
     { upsert: true }
   );
 
-  await RequestCounter.findOneAndUpdate(
-    { hostId: user.id },
-    { count: 0 },
-    { upsert: true }
-  );
-
-  const { level, rank, playstyle } = parseLevelRankPlaystyle(gameplay);
-  const { vc, language } = parseCommunication(comm);
+  const { level, rank, playstyle } = parseStats(gameplay);
+  const { vc, language } = parseComm(comm);
 
   const embed = new EmbedBuilder()
     .setColor("#22C55E")
@@ -282,15 +234,15 @@ client.on("interactionCreate", async interaction => {
     .setDescription(
       `👤 **Host:** <@${user.id}>\n\n` +
       `📌 **Stats:**\n` +
-      `• 🏐 Level: ${level}\n` +
+      `• 📊 Level: ${level}\n` +
       `• 🏆 Rank: ${rank}\n` +
-      `• 🎯 Playstyle: ${playstyle}\n\n` +
+      `• 🎮 Playstyle: ${playstyle}\n\n` +
       `📌 **Profile:**\n` +
       `• ⚡ Ability: ${ability}\n` +
       `• 🌍 Region: ${region}\n` +
-      `• 🎧 VC: ${vc}\n` +
-      `• 💬 Language: ${language}\n\n` +
-      `📝 Notes:\n${notes || "None"}`
+      `• 🎤 VC: ${vc}\n` +
+      `• 🌐 Language: ${language}\n\n` +
+      `📝 Notes: ${notes || "None"}`
     );
 
   const btn = new ActionRowBuilder().addComponents(
@@ -303,37 +255,27 @@ client.on("interactionCreate", async interaction => {
   const ch = client.channels.cache.get(FIND_PLAYERS_CHANNEL_ID);
   await ch.send({ content: `<@${user.id}>`, embeds: [embed], components: [btn] });
 
-  interaction.reply({ content: "Match created!", ephemeral: true });
+  i.reply({ content: "Match created!", ephemeral: true });
 });
 
 // ================================================================
-// PLAYER REQUEST → MODAL
+// PLAYER REQUEST → OPEN PLAYER MODAL
 // ================================================================
-client.on("interactionCreate", async interaction => {
-  if (!interaction.isButton() || !interaction.customId.startsWith("request_"))
-    return;
+client.on("interactionCreate", async i => {
+  if (!i.isButton()) return;
+  if (!i.customId.startsWith("request_")) return;
 
-  const hostId = interaction.customId.split("_")[1];
-  const user = interaction.user;
+  const hostId = i.customId.split("_")[1];
+  const requester = i.user;
 
-  const cd = await Cooldowns.findOne({ userId: user.id, hostId });
-  if (cd && Date.now() - cd.timestamp < 5 * 60000) {
-    return interaction.reply({
-      content: `❌ You must wait **${Math.ceil(
-        (5 * 60000 - (Date.now() - cd.timestamp)) / 60000
-      )} minute(s)** before sending another request.`,
-      ephemeral: true
-    });
-  }
-
-  const oldStats = await PlayerStats.findOne({ userId: user.id });
-  openPlayerModal(interaction, !!oldStats, oldStats, hostId);
+  const old = await PlayerStats.findOne({ userId: requester.id });
+  openPlayerModal(i, !!old, old, hostId);
 });
 
 // ================================================================
 // PLAYER MODAL
 // ================================================================
-function openPlayerModal(interaction, autofill, data, hostId) {
+function openPlayerModal(i, autofill, data, hostId) {
   const modal = new ModalBuilder()
     .setCustomId(`player_form_${hostId}`)
     .setTitle("Your Stats");
@@ -347,154 +289,84 @@ function openPlayerModal(interaction, autofill, data, hostId) {
   ];
 
   modal.addComponents(
-    ...fields.map(([id, label, value]) =>
+    ...fields.map(([id, label, val]) =>
       new ActionRowBuilder().addComponents(
         new TextInputBuilder()
           .setCustomId(id)
           .setLabel(label)
           .setStyle(label === "Notes" ? TextInputStyle.Paragraph : TextInputStyle.Short)
           .setRequired(id !== "p_notes")
-          .setValue(autofill && value ? value : "")
+          .setValue(autofill && val ? val : "")
       )
     )
   );
 
-  interaction.showModal(modal);
+  i.showModal(modal);
 }
 
 // ================================================================
-// PLAYER SUBMIT REQUEST
+// PLAYER FORM SUBMIT (DM-ONLY REQUESTS)
 // ================================================================
-client.on("interactionCreate", async interaction => {
-  if (!interaction.isModalSubmit() || !interaction.customId.startsWith("player_form_"))
-    return;
+client.on("interactionCreate", async i => {
+  if (!i.isModalSubmit()) return;
+  if (!i.customId.startsWith("player_form_")) return;
 
-  const hostId = interaction.customId.split("_")[2];
-  const user = interaction.user;
+  const hostId = i.customId.split("_")[2];
+  const requester = i.user;
 
-  const gameplay = interaction.fields.getTextInputValue("p_gameplay");
-  const ability = interaction.fields.getTextInputValue("p_ability");
-  const region = interaction.fields.getTextInputValue("p_region");
-  const comm = interaction.fields.getTextInputValue("p_communication");
-  const notes = interaction.fields.getTextInputValue("p_notes");
+  const gameplay = i.fields.getTextInputValue("p_gameplay");
+  const ability = i.fields.getTextInputValue("p_ability");
+  const region = i.fields.getTextInputValue("p_region");
+  const comm = i.fields.getTextInputValue("p_communication");
+  const notes = i.fields.getTextInputValue("p_notes");
 
   await PlayerStats.findOneAndUpdate(
-    { userId: user.id },
+    { userId: requester.id },
     { gameplay, ability, region, communication: comm, notes },
     { upsert: true }
   );
 
-  await Cooldowns.findOneAndUpdate(
-    { userId: user.id, hostId },
-    { timestamp: Date.now() },
-    { upsert: true }
-  );
+  const { level, rank, playstyle } = parseStats(gameplay);
+  const { vc, language } = parseComm(comm);
 
-  const counter = await RequestCounter.findOneAndUpdate(
-    { hostId },
-    { $inc: { count: 1 } },
-    { upsert: true, new: true }
-  );
+  // DM MESSAGE
+  const dmText =
+    `🔔 **New Play Request**\n\n` +
+    `👤 **Player:** <@${requester.id}>\n\n` +
+    `📌 **Stats:**\n` +
+    `• 📊 Level: ${level}\n` +
+    `• 🏆 Rank: ${rank}\n` +
+    `• 🎮 Playstyle: ${playstyle}\n` +
+    `• ⚡ Ability: ${ability}\n` +
+    `• 🌍 Region: ${region}\n` +
+    `• 🎤 VC: ${vc}\n` +
+    `• 🌐 Language: ${language}\n` +
+    `• 📝 Notes: ${notes || "None"}\n`;
 
-  const mmChannel = client.channels.cache.get(MATCHMAKING_CHANNEL_ID);
+  const host = await client.users.fetch(hostId).catch(() => null);
 
-  const { level, rank, playstyle } = parseLevelRankPlaystyle(gameplay);
-  const { vc, language } = parseCommunication(comm);
-
-  const embed = new EmbedBuilder()
-    .setColor("#22C55E")
-    .setTitle("🔔 New Play Request")
-    .setDescription(
-      `👤 **Player:** <@${user.id}>\n` +
-      `📨 **Total Requests:** ${counter.count}\n\n` +
-      `📌 **Player Stats:**\n` +
-      `• 🏐 Level: ${level}\n` +
-      `• 🏆 Rank: ${rank}\n` +
-      `• 🎯 Playstyle: ${playstyle}\n` +
-      `• ⚡ Ability: ${ability}\n` +
-      `• 🌍 Region: ${region}\n` +
-      `• 🎧 VC: ${vc}\n` +
-      `• 💬 Language: ${language}\n` +
-      `• 📝 Notes: ${notes || "None"}\n`
+  // TRY DM
+  try {
+    await host.send(dmText);
+  } catch (e) {
+    // SAVE REQUEST FOR LATER
+    await PendingRequests.findOneAndUpdate(
+      { hostId },
+      { $push: { requests: dmText } },
+      { upsert: true }
     );
 
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`accept_${user.id}`).setLabel("Accept").setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId(`decline_${user.id}`).setLabel("Decline").setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId(`sendlink_${user.id}`).setLabel("Send Private Server Link").setStyle(ButtonStyle.Primary)
-  );
+    // Notify host in match channel
+    const mm = client.channels.cache.get(MATCHMAKING_CHANNEL_ID);
+    await mm.send(`<@${hostId}> ⚠️ You have DMs disabled. Incoming requests saved until you enable them.`);
 
-  await mmChannel.send({ content: `<@${hostId}>`, embeds: [embed], components: [row] });
-
-  interaction.reply({ content: "Request sent!", ephemeral: true });
-});
-
-// ================================================================
-// ACCEPT / DECLINE REQUEST
-// ================================================================
-client.on("interactionCreate", async interaction => {
-  if (!interaction.isButton()) return;
-
-  if (interaction.customId.startsWith("accept_")) {
-    const uid = interaction.customId.replace("accept_", "");
-    const user = await client.users.fetch(uid);
-    await user.send("Your request was **accepted**!");
-    return interaction.reply({ content: "Accepted.", ephemeral: true });
+    return i.reply({ content: "Request saved & pending (Host DMs off).", ephemeral: true });
   }
 
-  if (interaction.customId.startsWith("decline_")) {
-    const uid = interaction.customId.replace("decline_", "");
-    const user = await client.users.fetch(uid);
-    await user.send("Your request was **declined**.");
-    return interaction.reply({ content: "Declined.", ephemeral: true });
-  }
+  i.reply({ content: "Request sent!", ephemeral: true });
 });
 
 // ================================================================
-// PRIVATE SERVER LINK
-// ================================================================
-client.on("interactionCreate", async interaction => {
-  if (!interaction.isButton() || !interaction.customId.startsWith("sendlink_"))
-    return;
-
-  const uid = interaction.customId.replace("sendlink_", "");
-
-  const modal = new ModalBuilder()
-    .setCustomId(`privatelink_${uid}`)
-    .setTitle("Send Private Server Link");
-
-  modal.addComponents(
-    new ActionRowBuilder().addComponents(
-      new TextInputBuilder()
-        .setCustomId("link")
-        .setLabel("Roblox Private Server Link")
-        .setPlaceholder("https://www.roblox.com/…")
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true)
-    )
-  );
-
-  interaction.showModal(modal);
-});
-
-client.on("interactionCreate", async interaction => {
-  if (!interaction.isModalSubmit() || !interaction.customId.startsWith("privatelink_"))
-    return;
-
-  const uid = interaction.customId.replace("privatelink_", "");
-  const user = await client.users.fetch(uid);
-  const link = interaction.fields.getTextInputValue("link");
-
-  if (!link.startsWith("https://www.roblox.com/")) {
-    return interaction.reply({
-      content: "❌ Link must start with https://www.roblox.com/",
-      ephemeral: true
-    });
-  }
-
-  await user.send(`Your private server link:\n${link}`);
-  interaction.reply({ content: "Link sent!", ephemeral: true });
-});
-
+// LOGIN
 // ================================================================
 client.login(process.env.BOT_TOKEN);
