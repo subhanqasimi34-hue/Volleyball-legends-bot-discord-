@@ -1,8 +1,3 @@
-// ================================================================
-// indexV9.js – Volley Legends Bot (Full Private Matchmaking Mode)
-// Public matchmaking button, all actions ephemeral & in DM.
-// Premium clean embeds, autofill, cooldowns, request counter.
-// ================================================================
 
 import {
   Client,
@@ -22,24 +17,18 @@ import express from "express";
 import dotenv from "dotenv";
 dotenv.config();
 
-// ================================================================
-// EXPRESS KEEP-ALIVE
-// ================================================================
+
 const app = express();
 app.get("/", (req, res) => res.send("Volley Legends Bot Running"));
 app.listen(3000, () => console.log("Express OK"));
 
-// ================================================================
-// MONGO CONNECTION
-// ================================================================
+
 mongoose
   .connect(process.env.MONGO_URI, { dbName: "VolleyBot" })
   .then(() => console.log("MongoDB Connected"))
   .catch((err) => console.log("MongoDB Error:", err));
 
-// ================================================================
-// SCHEMAS
-// ================================================================
+
 const statsSchema = {
   userId: { type: String, required: true, unique: true },
   gameplay: String,
@@ -70,9 +59,7 @@ const RequestCounter = mongoose.model(
   new mongoose.Schema({ hostId: String, count: Number })
 );
 
-// ================================================================
-// DISCORD CLIENT
-// ================================================================
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -82,15 +69,12 @@ const client = new Client({
   partials: [Partials.Channel, Partials.Message, Partials.User],
 });
 
-// ================================================================
-// CHANNEL CONFIG
-// ================================================================
+
+
 const MATCHMAKING_CHANNEL_ID = "1441139756007161906";
 const FIND_PLAYERS_CHANNEL_ID = "1441140684622008441";
 
-// ================================================================
-// HELPERS
-// ================================================================
+ä
 function parseLevelRankPlaystyle(text) {
   const parts = text.split("|").map((p) => p.trim());
   let level = "Unknown",
@@ -133,9 +117,7 @@ function autoDelete(message) {
   }, 5 * 60 * 1000);
 }
 
-// ================================================================
-// RESET MATCHMAKING CHANNEL
-// ================================================================
+ä
 async function resetMatchmakingChannel() {
   const channel = client.channels.cache.get(MATCHMAKING_CHANNEL_ID);
   if (!channel) return;
@@ -158,17 +140,13 @@ async function resetMatchmakingChannel() {
   await channel.send({ embeds: [embed], components: [row] });
 }
 
-// ================================================================
-// READY
-// ================================================================
+
 client.once("ready", async () => {
   console.log(`Logged in as ${client.user.tag}`);
   await resetMatchmakingChannel();
 });
 
-// ================================================================
-// HOST COOLDOWN
-// ================================================================
+
 async function checkHostCooldown(userId) {
   const entry = await HostCooldown.findOne({ userId });
   if (!entry) return 0;
@@ -179,9 +157,8 @@ async function checkHostCooldown(userId) {
     : Math.ceil((5 * 60 * 1000 - diff) / 60000);
 }
 
-// ================================================================
-// CREATE MATCH PRESSED
-// ================================================================
+
+
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
   if (interaction.customId !== "create_match") return;
@@ -194,7 +171,6 @@ client.on("interactionCreate", async (interaction) => {
     });
   }
 
-  // Ask for reuse, ephemeral
   const reuseEmbed = new EmbedBuilder()
     .setColor("#22C55E")
     .setTitle("♻️ Reuse last stats?")
@@ -220,9 +196,7 @@ client.on("interactionCreate", async (interaction) => {
   autoDelete(msg);
 });
 
-// ================================================================
-// HOST REUSE BUTTONS
-// ================================================================
+
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
 
@@ -236,9 +210,7 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
-// ================================================================
-// HOST MODAL
-// ================================================================
+
 function openHostModal(interaction, autofill, data) {
   const modal = new ModalBuilder()
     .setCustomId("host_form")
@@ -268,9 +240,7 @@ function openHostModal(interaction, autofill, data) {
   interaction.showModal(modal);
 }
 
-// ================================================================
-// HOST FORM SUBMIT
-// ================================================================
+
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isModalSubmit()) return;
   if (interaction.customId !== "host_form") return;
@@ -298,7 +268,7 @@ client.on("interactionCreate", async (interaction) => {
   const { level, rank, playstyle } = parseLevelRankPlaystyle(gameplay);
   const { vc, language } = parseCommunication(comm);
 
-  // Public match post
+  
   const embed = new EmbedBuilder()
     .setColor("#22C55E")
     .setTitle("🏐 Volley Legends Match Found")
@@ -332,10 +302,6 @@ client.on("interactionCreate", async (interaction) => {
   });
   autoDelete(ep);
 });
-
-// ================================================================
-// PLAY REQUEST PRESSED → Player modal
-// ================================================================
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
   if (!interaction.customId.startsWith("request_")) return;
@@ -361,9 +327,7 @@ client.on("interactionCreate", async (interaction) => {
   openPlayerModal(interaction, !!oldStats, oldStats, hostId);
 });
 
-// ================================================================
-// PLAYER MODAL
-// ================================================================
+
 function openPlayerModal(interaction, autofill, data, hostId) {
   const modal = new ModalBuilder()
     .setCustomId(`player_form_${hostId}`)
@@ -393,9 +357,7 @@ function openPlayerModal(interaction, autofill, data, hostId) {
   interaction.showModal(modal);
 }
 
-// ================================================================
-// PLAYER FORM SUBMIT → send DM to host
-// ================================================================
+
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isModalSubmit()) return;
   if (!interaction.customId.startsWith("player_form_")) return;
@@ -432,7 +394,7 @@ client.on("interactionCreate", async (interaction) => {
   const { level, rank, playstyle } = parseLevelRankPlaystyle(gameplay);
   const { vc, language } = parseCommunication(comm);
 
-  // Send to host DM only
+
   const host = await client.users.fetch(hostId);
 
   const embed = new EmbedBuilder()
@@ -477,9 +439,7 @@ client.on("interactionCreate", async (interaction) => {
   autoDelete(ep);
 });
 
-// ================================================================
-// ACCEPT / DECLINE HANDLING
-// ================================================================
+
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
 
@@ -490,7 +450,7 @@ client.on("interactionCreate", async (interaction) => {
     const requesterId = parts[1];
     const user = await client.users.fetch(requesterId);
 
-    const dm = await user.send("✅ Your request was **accepted**!");
+    const dm = await user.send("✅ Your request was sended for the Host **accepted**!");
     autoDelete(dm);
 
     const ep = await interaction.reply({
@@ -504,7 +464,7 @@ client.on("interactionCreate", async (interaction) => {
     const requesterId = parts[1];
     const user = await client.users.fetch(requesterId);
 
-    const dm = await user.send("❌ Your request was **declined**.");
+    const dm = await user.send("❌ Your request got  **declined**.");
     autoDelete(dm);
 
     const ep = await interaction.reply({
@@ -515,9 +475,6 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
-// ================================================================
-// PRIVATE SERVER LINK HANDLING
-// ================================================================
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
   if (!interaction.customId.startsWith("sendlink_")) return;
@@ -542,9 +499,6 @@ client.on("interactionCreate", async (interaction) => {
   interaction.showModal(modal);
 });
 
-// ================================================================
-// SERVER LINK SUBMIT
-// ================================================================
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isModalSubmit()) return;
   if (!interaction.customId.startsWith("privatelink_")) return;
@@ -562,7 +516,7 @@ client.on("interactionCreate", async (interaction) => {
     return;
   }
 
-  const dm = await user.send(`🔗 Your private server link:\n${link}`);
+  const dm = await user.send(`🔗 The Host send you the Privat Link :\n${link}`);
   autoDelete(dm);
 
   const ep = await interaction.reply({
