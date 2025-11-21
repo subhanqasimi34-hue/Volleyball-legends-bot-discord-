@@ -85,6 +85,28 @@ const client = new Client({
 });
 
 // ================================================================
+// AUTOMATISCHE DM-LÖSCHUNG NACH **1 MINUTE**
+// ================================================================
+
+// User → Bot DMs löschen
+client.on("messageCreate", async message => {
+  if (!message.guild && !message.author.bot) {
+    setTimeout(() => {
+      message.delete().catch(() => {});
+    }, 60000); // 1 Minute
+  }
+});
+
+// Bot → User DMs löschen
+client.on("messageCreate", async message => {
+  if (!message.guild && message.author.bot) {
+    setTimeout(() => {
+      message.delete().catch(() => {});
+    }, 60000); // 1 Minute
+  }
+});
+
+// ================================================================
 // CHANNELS
 // ================================================================
 const MATCHMAKING_CHANNEL_ID = "1441139756007161906";
@@ -129,7 +151,7 @@ function parseCommunication(text) {
 }
 
 // ================================================================
-// RESET MATCHMAKING CHANNEL (DELETES ALL REQUESTS)
+// RESET MATCHMAKING CHANNEL
 // ================================================================
 async function resetMatchmakingChannel() {
   const channel = client.channels.cache.get(MATCHMAKING_CHANNEL_ID);
@@ -170,19 +192,18 @@ async function checkHostCooldown(userId) {
   const now = Date.now();
   const diff = now - entry.timestamp;
 
-  if (diff >= 5 * 60 * 1000) return 0; // expired
+  if (diff >= 5 * 60 * 1000) return 0;
 
   return Math.ceil((5 * 60 * 1000 - diff) / 60000);
 }
 
 // ================================================================
-// HOST CLICK: CREATE MATCH → Ask Reuse
+// HOST CLICK: CREATE MATCH
 // ================================================================
 client.on("interactionCreate", async interaction => {
   if (!interaction.isButton()) return;
   if (interaction.customId !== "create_match") return;
 
-  // Check Host Cooldown
   const minutesLeft = await checkHostCooldown(interaction.user.id);
   if (minutesLeft > 0) {
     return interaction.reply({
@@ -284,7 +305,7 @@ client.on("interactionCreate", async interaction => {
 });
 
 // ================================================================
-// SUBMIT MATCH FORM → SEND TO #find-players
+// SUBMIT MATCH FORM
 // ================================================================
 client.on("interactionCreate", async interaction => {
   if (!interaction.isModalSubmit()) return;
@@ -301,21 +322,18 @@ client.on("interactionCreate", async interaction => {
   const { level, rank, playstyle } = parseLevelRankPlaystyle(gameplay);
   const { vc, language } = parseCommunication(comm);
 
-  // SAVE PROFILE
   await HostStats.findOneAndUpdate(
     { userId: user.id },
     { gameplay, ability, region, communication: comm, notes },
     { upsert: true }
   );
 
-  // RESET REQUEST COUNTER
   await RequestCounter.findOneAndUpdate(
     { hostId: user.id },
     { count: 0 },
     { upsert: true }
   );
 
-  // SET HOST COOLDOWN
   await HostCooldown.findOneAndUpdate(
     { userId: user.id },
     { timestamp: Date.now() },
@@ -353,7 +371,7 @@ client.on("interactionCreate", async interaction => {
 });
 
 // ================================================================
-// PLAYER REQUEST → 5 MIN COOLDOWN + COUNTER + REQUEST EMBED
+// PLAYER REQUEST HANDLING
 // ================================================================
 async function checkPlayerCooldown(playerId, hostId) {
   const entry = await Cooldowns.findOne({ userId: playerId, hostId });
@@ -382,14 +400,12 @@ client.on("interactionCreate", async interaction => {
     });
   }
 
-  // SAVE PLAYER COOLDOWN
   await Cooldowns.findOneAndUpdate(
     { userId: requester.id, hostId },
     { timestamp: Date.now() },
     { upsert: true }
   );
 
-  // INCREASE HOST REQUEST COUNTER
   const counter = await RequestCounter.findOneAndUpdate(
     { hostId },
     { $inc: { count: 1 } },
@@ -397,7 +413,6 @@ client.on("interactionCreate", async interaction => {
   );
 
   const requestCount = counter.count;
-
   const matchEmbed = interaction.message.embeds[0];
 
   const embed = new EmbedBuilder()
