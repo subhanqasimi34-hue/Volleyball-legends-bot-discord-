@@ -97,7 +97,7 @@ async function resetMatchmakingChannel() {
   const embed = new EmbedBuilder()
     .setColor("#22C55E")
     .setTitle("Volley Legends Matchmaking")
-    .setDescription("Click **Create Match** to start we made the bot only for you and your saftey | many scams links etc. we did add a Security Link proofer!");
+    .setDescription("Click **Create Match** to get started. We built this bot to keep you safe - there are many scam links out there, so we added a Security Link Checker to protect you!");
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
