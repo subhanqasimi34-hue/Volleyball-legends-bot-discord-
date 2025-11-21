@@ -93,23 +93,43 @@ async function resetMatchmakingChannel() {
   const msgs = await ch.messages.fetch({ limit: 100 }).catch(() => {});
   if (msgs) await ch.bulkDelete(msgs).catch(() => {});
 
-  const embed = new EmbedBuilder()
-    .setColor("#22C55E")
-    .setTitle("Volley Legends Matchmaking")
-    .setDescription("Click Create Match to start.");
+  const modeColors = {
+      "2v2": "#22C55E",
+      "3v3": "#3B82F6",
+      "4v4": "#8B5CF6"
+    };
 
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId("create_match")
-      .setLabel("Create Match")
-      .setStyle(ButtonStyle.Success)
-  );
+    const embed = new EmbedBuilder()
+      .setColor(modeColors[mode] || "#22C55E")
+      .setAuthor({
+        name: `${user.username}'s Match`,
+        iconURL: user.displayAvatarURL({ size: 256 })
+      })
+      .setTitle(`${mode.toUpperCase()} Match Created`)
+      .setDescription(
+`╔════════ MATCH ════════╗
+🏐 **Mode:** ${mode.toUpperCase()}
+👤 **Host:** ${user}
+╚════════════════════════╝
 
-  await ch.send({ embeds: [embed], components: [row] });
-}
+🎯 **Gameplay**
+Level: ${gp.level}
+Rank: ${gp.rank}
+Playstyle: ${gp.playstyle}
 
-client.once("ready", () => {
-  console.log(`Logged in as ${client.user.tag}`);
+💥 **Ability**
+${ability}
+
+🌍 **Region**
+${region}
+
+🎙 **Communication**
+VC: ${cm.vc}
+Language: ${cm.language}
+
+📝 **Notes**
+${notes || "None"}`
+    );;
   resetMatchmakingChannel();
 });
 
@@ -255,11 +275,32 @@ ${notes || "None"}`
 
   const ch = client.channels.cache.get(FIND_PLAYERS_CHANNEL_ID);
 
-  await ch.send({
+  const msg = await ch.send({
     content: `${user}`,
     embeds: [embed],
     components: [btn]
   });
+
+  // Auto-expire button after 10 minutes
+  setTimeout(async () => {
+    try {
+      const disabledRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`req_${user.id}`)
+          .setLabel("Expired")
+          .setStyle(ButtonStyle.Secondary)
+          .setDisabled(true)
+      );
+
+      await msg.edit({
+        components: [disabledRow],
+        content: `${user} — Match expired`
+      });
+    } catch (err) {
+      console.log("Failed to disable button:", err);
+    }
+  }, 600000); // 10 minutes
+
 
   return i.reply({ content: "Match created!", ephemeral: true });
 });
@@ -295,7 +336,7 @@ client.on("interactionCreate", async i => {
 `Player: ${requester}
 Requests: ${counter.count}
 
-Paste your Roblox private server link.
+Please enter the Volleyball Legends Privat Server.
 
 ${matchEmbed.description}`
     );
@@ -303,7 +344,7 @@ ${matchEmbed.description}`
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`link_${requester.id}`)
-      .setLabel("Send Private Server Link")
+      .setLabel("Press here and paste your Volleyball Legends Privat Server link")
       .setStyle(ButtonStyle.Primary)
   );
 
@@ -317,9 +358,9 @@ client.on("interactionCreate", async i => {
 
   const id = i.customId.replace("link_", "");
 
-  const modal = new ModalBuilder().setCustomId(`sendlink_${id}`).setTitle("Private Server Link");
+  const modal = new ModalBuilder().setCustomId(`sendlink_${id}`).setTitle("Press here and paste your Volleyball Legends Privat Server link");
   modal.addComponents(new ActionRowBuilder().addComponents(
-    new TextInputBuilder().setCustomId("link").setLabel("Roblox Link").setRequired(true).setStyle(TextInputStyle.Short)
+    new TextInputBuilder().setCustomId("link").setLabel("Please enter the Volleyball Legends Privat Server").setRequired(true).setStyle(TextInputStyle.Short)
   ));
 
   return i.showModal(modal);
@@ -338,9 +379,9 @@ client.on("interactionCreate", async i => {
   if (!shareRegex.test(link) && !vipRegex.test(link)) return i.reply({ content: "Invalid private server link.", ephemeral: true });
 
   const user = await client.users.fetch(id).catch(() => {});
-  if (user) await user.send(`Private server link: ${link}`).catch(() => {});
+  if (user) await user.send(`The host as sent the link: ${link}`).catch(() => {});
 
-  return i.reply({ content: "Sent!", ephemeral: true });
+  return i.reply({ content: "Private link as been sent!", ephemeral: true });
 });
 
 client.login(process.env.BOT_TOKEN);
