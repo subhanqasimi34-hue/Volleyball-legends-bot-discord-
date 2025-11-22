@@ -414,7 +414,7 @@ client.on("interactionCreate", async i => {
   // 🔥 Neuer Text im Embed
   const embed = new EmbedBuilder()
     .setColor("#22C55E")
-    .setTitle("Send your Volleyball Legends private server link")
+    .setTitle("Volleyball Legends private server link")
     .setDescription(
 `**${requester} wants to join your match.**
 
@@ -453,12 +453,12 @@ client.on("interactionCreate", async i => {
 
   const modal = new ModalBuilder()
     .setCustomId(`sendlink_${requesterId}`)
-    .setTitle("Send your Volleyball Legends private server link")
+    .setTitle("Volleyball Legends private server link")
     .addComponents(
       new ActionRowBuilder().addComponents(
         new TextInputBuilder()
           .setCustomId("link")
-          .setLabel("Volleyball Legends private server link")
+          .setTitle("Volleyball Legends private server link")
           .setRequired(true)
           .setStyle(TextInputStyle.Short)
       )
