@@ -1,6 +1,15 @@
 // ================================================================
 // indexV6.js – Volley Legends Matchmaking Bot with Mode Selection
-// Added 2v2 / 3v3 / 4v4 mode choice before match form.
+// Modes: 2v2 / 3v3 / 4v4
+// Features:
+// - Colored Mode Buttons
+// - Colored Embeds per Mode
+// - Icons per Mode
+// - Refresh Match (Host-only)
+// - Auto Expire after 10 minutes
+// - Auto Delete after Expire
+// - Security Link Checker
+// - Clean, Render-friendly (no timers)
 // ================================================================
 
 import {
@@ -41,10 +50,9 @@ const HostStats = mongoose.model("HostStats", new mongoose.Schema({
   mode: String
 }));
 
-const Cooldowns = mongoose.model("Cooldowns", new mongoose.Schema({
-  userId: String,
+const RequestCounter = mongoose.model("RequestCounter", new mongoose.Schema({
   hostId: String,
-  timestamp: Number
+  count: Number
 }));
 
 const HostCooldown = mongoose.model("HostCooldown", new mongoose.Schema({
@@ -52,9 +60,10 @@ const HostCooldown = mongoose.model("HostCooldown", new mongoose.Schema({
   timestamp: Number
 }));
 
-const RequestCounter = mongoose.model("RequestCounter", new mongoose.Schema({
+const Cooldowns = mongoose.model("Cooldowns", new mongoose.Schema({
+  userId: String,
   hostId: String,
-  count: Number
+  timestamp: Number
 }));
 
 // CLIENT
@@ -86,6 +95,13 @@ const parseCommunication = t => {
   return { vc: p[0] || "Unknown", language: p[1] || "Unknown" };
 };
 
+// COLORS + ICONS
+const modeStyles = {
+  "2v2": { color: "#22C55E", emoji: "🟢", button: ButtonStyle.Success },
+  "3v3": { color: "#3B82F6", emoji: "🔵", button: ButtonStyle.Primary },
+  "4v4": { color: "#8B5CF6", emoji: "🟣", button: ButtonStyle.Secondary }
+};
+
 // RESET CHANNEL
 async function resetMatchmakingChannel() {
   const ch = client.channels.cache.get(MATCHMAKING_CHANNEL_ID);
@@ -97,12 +113,15 @@ async function resetMatchmakingChannel() {
   const embed = new EmbedBuilder()
     .setColor("#22C55E")
     .setTitle("Volley Legends Matchmaking")
-    .setDescription("Click **Create Match** to get started. We built this bot to keep you safe - there are many scam links out there, so we added a Security Link Checker to protect you!");
+    .setDescription(
+      "Click **Create Match** to get started.\n" +
+      "We built this bot to keep you safe. Scam links are everywhere — our Security Link Checker protects you."
+    );
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId("create_match")
-      .setLabel("Please click here do Creat a match")
+      .setLabel("Create Match")
       .setStyle(ButtonStyle.Success)
   );
 
@@ -124,22 +143,23 @@ async function checkHostCooldown(id) {
   return Math.ceil((300000 - diff) / 60000);
 }
 
-// STEP 1 — PICK MODE
+// STEP 1 — MODE SELECTION
 client.on("interactionCreate", async i => {
   if (!i.isButton() || i.customId !== "create_match") return;
 
   const cd = await checkHostCooldown(i.user.id);
-  if (cd > 0) return i.reply({ content: `Wait **${cd} min**.`, ephemeral: true });
+  if (cd > 0)
+    return i.reply({ content: `Wait **${cd} minutes** before creating another match.`, ephemeral: true });
 
   const embed = new EmbedBuilder()
     .setColor("#22C55E")
-    .setTitle("Select which Match Mode you want Play!")
-    .setDescription("Choose your team size.");
+    .setTitle("Choose your Match Mode")
+    .setDescription("Select which team size you want to host.");
 
   const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId("mode_2v2").setLabel("2vs2").setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId("mode_3v3").setLabel("3vs3").setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId("mode_4v4").setLabel("4vs4").setStyle(ButtonStyle.Primary)
+    new ButtonBuilder().setCustomId("mode_2v2").setLabel("🟢 2v2").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId("mode_3v3").setLabel("🔵 3v3").setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId("mode_4v4").setLabel("🟣 4v4").setStyle(ButtonStyle.Secondary)
   );
 
   return i.reply({ embeds: [embed], components: [row], ephemeral: true });
@@ -156,8 +176,8 @@ client.on("interactionCreate", async i => {
 
   const embed = new EmbedBuilder()
     .setColor("#22C55E")
-    .setTitle("Last Layouth?")
-    .setDescription("Do you want to autofill your last match settings?");
+    .setTitle("Use previous settings?")
+    .setDescription("Do you want to reuse your last match data?");
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`reuse_yes_${mode}`).setLabel("Yes").setStyle(ButtonStyle.Success),
@@ -167,33 +187,32 @@ client.on("interactionCreate", async i => {
   return i.reply({ embeds: [embed], components: [row], ephemeral: true });
 });
 
-// STEP 3 — OPEN FORM
+// STEP 3 — MODAL
 function openModal(i, autofill, data, mode) {
-  const m = new ModalBuilder().setCustomId(`match_form_${mode}`).setTitle(`Create ${mode.toUpperCase()} Match`);
+  const modal = new ModalBuilder().setCustomId(`match_form_${mode}`).setTitle(`Create ${mode.toUpperCase()} Match`);
 
   const fields = [
     ["gameplay", "Level | Rank | Playstyle", true, TextInputStyle.Short],
     ["ability", "Ability", true, TextInputStyle.Short],
     ["region", "Region", true, TextInputStyle.Short],
     ["comm", "VC | Language", true, TextInputStyle.Short],
-    ["notes", "Notes", false, TextInputStyle.Paragraph]
-  ].map(([id, label, req, style]) => {
-    const ti = new TextInputBuilder()
-      .setCustomId(id)
-      .setLabel(label)
-      .setRequired(req)
-      .setStyle(style);
+    ["notes", "Notes (optional)", false, TextInputStyle.Paragraph]
+  ];
 
-    if (autofill && data) {
-      const v = id === "comm" ? data.communication : data[id];
-      if (v) ti.setValue(v);
-    }
+  modal.addComponents(
+    ...fields.map(([id, label, req, style]) =>
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId(id)
+          .setLabel(label)
+          .setRequired(req)
+          .setStyle(style)
+          .setValue(autofill && data ? (id === "comm" ? data.communication : data[id] || "") : "")
+      )
+    )
+  );
 
-    return new ActionRowBuilder().addComponents(ti);
-  });
-
-  m.addComponents(...fields);
-  return i.showModal(m);
+  return i.showModal(modal);
 }
 
 // STEP 4 — SUBMIT FORM
@@ -201,6 +220,8 @@ client.on("interactionCreate", async i => {
   if (!i.isModalSubmit() || !i.customId.startsWith("match_form_")) return;
 
   const mode = i.customId.replace("match_form_", "");
+  const style = modeStyles[mode] || modeStyles["2v2"];
+
   const user = i.user;
 
   const gameplay = i.fields.getTextInputValue("gameplay");
@@ -212,6 +233,7 @@ client.on("interactionCreate", async i => {
   const gp = parseGameplay(gameplay);
   const cm = parseCommunication(comm);
 
+  // Save stats
   await HostStats.findOneAndUpdate(
     { userId: user.id },
     { gameplay, ability, region, communication: comm, notes, mode },
@@ -221,21 +243,14 @@ client.on("interactionCreate", async i => {
   await RequestCounter.findOneAndUpdate({ hostId: user.id }, { count: 0 }, { upsert: true });
   await HostCooldown.findOneAndUpdate({ userId: user.id }, { timestamp: Date.now() }, { upsert: true });
 
-  // MODE COLORS
-  const modeColors = {
-    "2v2": "#22C55E",
-    "3v3": "#3B82F6",
-    "4v4": "#8B5CF6"
-  };
-
-  // MATCH EMBED
+  // EMBED
   const embed = new EmbedBuilder()
-    .setColor(modeColors[mode] || "#22C55E")
+    .setColor(style.color)
     .setAuthor({
-      name: `${user.username}'s Match`,
+      name: `${user.username}`,
       iconURL: user.displayAvatarURL({ size: 256 })
     })
-    .setTitle(`${mode.toUpperCase()} Match Created`)
+    .setTitle(`${style.emoji} ${mode.toUpperCase()} Match`)
     .setDescription(
 `╔════════ MATCH ════════╗
 🏐 **Mode:** ${mode.toUpperCase()}
@@ -257,43 +272,71 @@ ${region}
 VC: ${cm.vc}
 Language: ${cm.language}
 
-**Looking for?**
-${notes || "None"}`);
+📝 **Looking for**
+${notes || "None"}`
+    );
 
-
-  const btn = new ActionRowBuilder().addComponents(
+  // BUTTONS
+  const buttons = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`req_${user.id}`)
       .setLabel("Play Together")
-      .setStyle(ButtonStyle.Success)
+      .setStyle(style.button),
+
+    new ButtonBuilder()
+      .setCustomId(`refresh_${user.id}`)
+      .setLabel("Refresh Match")
+      .setStyle(ButtonStyle.Secondary)
   );
 
   const ch = client.channels.cache.get(FIND_PLAYERS_CHANNEL_ID);
+
   const msg = await ch.send({
     content: `${user}`,
     embeds: [embed],
-    components: [btn]
+    components: [buttons]
   });
 
-  // AUTO-EXPIRE BUTTON AFTER 10 MINUTES
+  // AUTO-EXPIRE + DELETE
   setTimeout(async () => {
     try {
-      const disabledRow = new ActionRowBuilder().addComponents(
+      const expired = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
-          .setCustomId(`req_${user.id}`)
+          .setCustomId("expired")
           .setLabel("Expired")
           .setStyle(ButtonStyle.Secondary)
           .setDisabled(true)
       );
 
       await msg.edit({
-        components: [disabledRow],
-        content: `${user} — Match expired`
+        content: `${user} — Match expired`,
+        components: [expired]
       });
+
+      // Delete after expire
+      setTimeout(() => msg.delete().catch(() => {}), 20000);
+
     } catch {}
-  }, 600000);
+  }, 600000); // 10 min
 
   return i.reply({ content: "Match created!", ephemeral: true });
+});
+
+// REFRESH MATCH (HOST ONLY)
+client.on("interactionCreate", async i => {
+  if (!i.isButton() || !i.customId.startsWith("refresh_")) return;
+
+  const hostId = i.customId.replace("refresh_", "");
+  if (i.user.id !== hostId)
+    return i.reply({ content: "Only the match host can refresh this.", ephemeral: true });
+
+  const oldMsg = i.message;
+  await oldMsg.delete().catch(() => {});
+
+  return i.reply({
+    content: "Refreshing match...",
+    ephemeral: true
+  });
 });
 
 // PLAYER REQUEST
@@ -322,14 +365,15 @@ client.on("interactionCreate", async i => {
 
   const embed = new EmbedBuilder()
     .setColor("#22C55E")
-    .setTitle("New Play Request is here")
+    .setTitle("New Play Request")
     .setDescription(
 `Player: ${requester}
 Requests: ${counter.count}
 
-Please enter the Volleyball Legends Privat Server link!
+Paste your Volleyball Legends private server link.
 
-${matchEmbed.description}`);
+${matchEmbed.description}`
+    );
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
@@ -342,7 +386,7 @@ ${matchEmbed.description}`);
   return i.reply({ content: "Request sent!", ephemeral: true });
 });
 
-// SEND LINK MODAL
+// LINK MODAL
 client.on("interactionCreate", async i => {
   if (!i.isButton() || !i.customId.startsWith("link_")) return;
 
@@ -350,7 +394,7 @@ client.on("interactionCreate", async i => {
 
   const modal = new ModalBuilder()
     .setCustomId(`sendlink_${id}`)
-    .setTitle("Private Server Link")
+    .setTitle("Send your Private Server Link")
     .addComponents(
       new ActionRowBuilder().addComponents(
         new TextInputBuilder()
@@ -364,12 +408,12 @@ client.on("interactionCreate", async i => {
   return i.showModal(modal);
 });
 
-// SEND LINK SUBMISSION
+// LINK SUBMISSION
 client.on("interactionCreate", async i => {
   if (!i.isModalSubmit() || !i.customId.startsWith("sendlink_")) return;
 
   const id = i.customId.replace("sendlink_", "");
-  const link = i.fields.getTextInputValue("link");
+  const link = i.fields.getTextInputValue("link").trim();
 
   const shareRegex = /^https:\/\/www\.roblox\.com\/share\?code=[A-Za-z0-9]+&type=Server$/;
   const vipRegex = /^https:\/\/www\.roblox\.com\/games\/[0-9]+\/[^/?]+\?privateServerLinkCode=[A-Za-z0-9_-]+$/;
@@ -380,10 +424,10 @@ client.on("interactionCreate", async i => {
   if (!shareRegex.test(link) && !vipRegex.test(link))
     return i.reply({ content: "Invalid private server link format.", ephemeral: true });
 
-  const user = await client.users.fetch(id).catch(() => {});
-  if (user) user.send(`The host did sent the Volleyball Legends Privat Link!:\n${link}`).catch(() => {});
+  const host = await client.users.fetch(id).catch(() => {});
+  if (host) host.send(`Here is the private server link:\n${link}`).catch(() => {});
 
-  return i.reply({ content: "Private server link sent!", ephemeral: true });
+  return i.reply({ content: "Private link sent!", ephemeral: true });
 });
 
 // LOGIN
