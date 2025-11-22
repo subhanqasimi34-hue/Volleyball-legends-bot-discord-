@@ -269,13 +269,9 @@ function openModal(i, autofill, data, mode) {
 }
 
 
-// =====================
-// STEP 4: SUBMIT FORM
-// =====================
-
+// STEP 4 — SUBMIT FORM (MATCH ERSTELLEN + 4 MIN EXPIRE)
 client.on("interactionCreate", async i => {
-  if (!i.isModalSubmit()) return;
-  if (!i.customId.startsWith("match_form_")) return;
+  if (!i.isModalSubmit() || !i.customId.startsWith("match_form_")) return;
 
   const mode = i.customId.replace("match_form_", "");
   const style = modeStyles[mode] || modeStyles["2v2"];
@@ -291,6 +287,7 @@ client.on("interactionCreate", async i => {
   const gp = parseGameplay(gameplay);
   const cm = parseCommunication(comm);
 
+  // Save stats
   await HostStats.findOneAndUpdate(
     { userId: user.id },
     { gameplay, ability, region, communication: comm, notes, mode },
@@ -309,9 +306,13 @@ client.on("interactionCreate", async i => {
     { upsert: true }
   );
 
+  // MATCH EMBED
   const embed = new EmbedBuilder()
     .setColor(style.color)
-    .setAuthor({ name: `${user.username}`, iconURL: user.displayAvatarURL({ size: 256 }) })
+    .setAuthor({
+      name: `${user.username}`,
+      iconURL: user.displayAvatarURL({ size: 256 })
+    })
     .setTitle(`${style.emoji} ${mode.toUpperCase()} Match`)
     .setDescription(
 `╔════════ MATCH ════════╗
@@ -335,37 +336,65 @@ VC: ${cm.vc}
 Language: ${cm.language}
 
 📝 **Looking for**
-${notes || "None"}` );
+${notes || "None"}`
+    );
 
-  const buttons = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`req_${user.id}`).setLabel("Play Together").setStyle(style.button),
-    new ButtonBuilder().setCustomId(`refresh_${user.id}`).setLabel("Refresh Match").setStyle(ButtonStyle.Secondary)
+  // ONLY PLAY BUTTON (Refresh entfernt)
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`req_${user.id}`)
+      .setLabel("Play Together")
+      .setStyle(style.button)
   );
 
+  // SEND TO FIND-PLAYERS
   const ch = client.channels.cache.get(FIND_PLAYERS_CHANNEL_ID);
 
   const msg = await ch.send({
     content: `${user}`,
     embeds: [embed],
-    components: [buttons]
+    components: [row]
   });
 
+  // AUTO EXPIRE AFTER 4 MIN
   setTimeout(async () => {
     try {
-      const expired = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId("expired").setLabel("Expired").setStyle(ButtonStyle.Secondary).setDisabled(true)
+      const expiredRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId("expired")
+          .setLabel("Match expired")
+          .setStyle(ButtonStyle.Danger)
       );
 
       await msg.edit({
         content: `${user} — Match expired`,
-        components: [expired]
+        components: [expiredRow]
       });
 
-      setTimeout(() => msg.delete().catch(() => {}), 20000);
-    } catch {}
-  }, 600000);
+      // Optional: löschen nach 20 sec
+      // setTimeout(() => msg.delete().catch(() => {}), 20000);
 
-  i.reply({ content: "Match created!", ephemeral: true });
+    } catch (err) {}
+  }, 240000); // 4 Minuten
+
+  return i.reply({ content: "Match created!", ephemeral: true });
+});
+
+
+
+// =========================
+// HANDLER: EXPIRED CLICK
+// =========================
+
+client.on("interactionCreate", async i => {
+  if (!i.isButton()) return;
+
+  if (i.customId === "expired") {
+    return i.reply({
+      content: "This match has expired and is no longer available.",
+      ephemeral: true
+    });
+  }
 });
 
 
