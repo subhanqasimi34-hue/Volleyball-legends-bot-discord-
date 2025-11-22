@@ -386,17 +386,14 @@ client.on("interactionCreate", async i => {
 });
 
 
-// =====================
-// PLAYER REQUEST
-// =====================
-
+// PLAYER REQUEST (mit neuer Nachricht und Text)
 client.on("interactionCreate", async i => {
-  if (!i.isButton()) return;
-  if (!i.customId.startsWith("req_")) return;
+  if (!i.isButton() || !i.customId.startsWith("req_")) return;
 
   const hostId = i.customId.replace("req_", "");
   const requester = i.user;
 
+  // Log + Count
   await Cooldowns.findOneAndUpdate(
     { userId: requester.id, hostId },
     { timestamp: Date.now() },
@@ -414,55 +411,58 @@ client.on("interactionCreate", async i => {
 
   const matchEmbed = i.message.embeds[0];
 
+  // 🔥 Neuer Text im Embed
   const embed = new EmbedBuilder()
     .setColor("#22C55E")
-    .setTitle("New Play Request")
+    .setTitle("Send your Volleyball Legends private server link")
     .setDescription(
-`Player: ${requester}
-Requests: ${counter.count}
+`**${requester} wants to join your match.**
 
-Paste your Volleyball Legends private server link.
+Requests so far: **${counter.count}**
+
+Please send your Volleyball Legends private server link.
+
+Below is the information from your match:
 
 ${matchEmbed.description}`
     );
 
+  // 🔥 Neuer Button-Text
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`link_${requester.id}`)
-      .setLabel("Send Private Server Link")
+      .setLabel("Send your Volleyball Legends link")
       .setStyle(ButtonStyle.Primary)
   );
 
-  host.send({ embeds: [embed], components: [row] }).catch(() => {});
-  i.reply({ content: "Request sent!", ephemeral: true });
+  await host.send({ embeds: [embed], components: [row] }).catch(() => {});
+  return i.reply({ content: "Request sent!", ephemeral: true });
 });
 
 
-// =====================
-// LINK MODAL
-// =====================
 
+// LINK MODAL (neue Texte)
 client.on("interactionCreate", async i => {
-  if (!i.isButton()) return;
-  if (!i.customId.startsWith("link_")) return;
+  if (!i.isButton() || !i.customId.startsWith("link_")) return;
 
   const requesterId = i.customId.replace("link_", "");
 
   const modal = new ModalBuilder()
     .setCustomId(`sendlink_${requesterId}`)
-    .setTitle("Send your Private Server Link")
+    .setTitle("Send your Volleyball Legends private server link")
     .addComponents(
       new ActionRowBuilder().addComponents(
         new TextInputBuilder()
           .setCustomId("link")
-          .setLabel("Roblox Private Server Link")
+          .setLabel("Volleyball Legends private server link")
           .setRequired(true)
           .setStyle(TextInputStyle.Short)
       )
     );
 
-  i.showModal(modal);
+  return i.showModal(modal);
 });
+
 
 
 // =====================
@@ -487,10 +487,10 @@ client.on("interactionCreate", async i => {
 
   const host = await client.users.fetch(id).catch(() => {});
   if (host) {
-    host.send(`Here is the private server link:\n${link}`).catch(() => {});
+    host.send(`Host sent the privat link:\n${link}`).catch(() => {});
   }
 
-  i.reply({ content: "Private link sent!", ephemeral: true });
+  i.reply({ content: "The Privat Server link has been sent!", ephemeral: true });
 });
 
 
