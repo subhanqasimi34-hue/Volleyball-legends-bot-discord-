@@ -1,15 +1,5 @@
 // ================================================================
-// indexV6.js – Volley Legends Matchmaking Bot with Mode Selection
-// Modes: 2v2 / 3v3 / 4v4
-// Features:
-// - Colored Mode Buttons
-// - Colored Embeds per Mode
-// - Icons per Mode
-// - Refresh Match (Host-only)
-// - Auto Expire after 10 minutes
-// - Auto Delete after Expire
-// - Security Link Checker
-// - Clean, Render-friendly (no timers)
+// indexV6.js – Volley Legends Matchmaking Bot (Optimierte Version)
 // ================================================================
 
 import {
@@ -29,19 +19,23 @@ import express from "express";
 import dotenv from "dotenv";
 dotenv.config();
 
-// SERVER
+// SERVER (Ping-Schutz für Hosting)
 const app = express();
 app.get("/", (req, res) => res.send("Volley Legends Bot running"));
 app.listen(3000, () => console.log("Express OK"));
 
-// MONGO
+// MONGODB
 mongoose.connect(process.env.MONGO_URI, { dbName: "VolleyBot" })
   .then(() => console.log("MongoDB Connected"))
   .catch(err => console.log("MongoDB Error:", err));
 
-// SCHEMAS
+
+// =====================
+// DATABASE MODELS
+// =====================
+
 const HostStats = mongoose.model("HostStats", new mongoose.Schema({
-  userId: { type: String, required: true, unique: true },
+  userId: { type: String, unique: true },
   gameplay: String,
   ability: String,
   region: String,
@@ -66,7 +60,11 @@ const Cooldowns = mongoose.model("Cooldowns", new mongoose.Schema({
   timestamp: Number
 }));
 
-// CLIENT
+
+// =====================
+// CLIENT INIT
+// =====================
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -77,38 +75,47 @@ const client = new Client({
 });
 
 // AUTO DELETE DMs
-client.on("messageCreate", async msg => {
-  if (!msg.guild) setTimeout(() => msg.delete().catch(() => {}), 60000);
+client.on("messageCreate", msg => {
+  if (!msg.guild) {
+    setTimeout(() => msg.delete().catch(() => {}), 60000);
+  }
 });
 
 const MATCHMAKING_CHANNEL_ID = "1441139756007161906";
 const FIND_PLAYERS_CHANNEL_ID = "1441140684622008441";
 
-// PARSERS
-const parseGameplay = t => {
-  const p = t.split("|").map(s => s.trim());
+
+// =====================
+// HELPERS
+// =====================
+
+const parseGameplay = text => {
+  const p = text.split("|").map(s => s.trim());
   return { level: p[0] || "Unknown", rank: p[1] || "Unknown", playstyle: p[2] || "Unknown" };
 };
 
-const parseCommunication = t => {
-  const p = t.split("|").map(s => s.trim());
+const parseCommunication = text => {
+  const p = text.split("|").map(s => s.trim());
   return { vc: p[0] || "Unknown", language: p[1] || "Unknown" };
 };
 
-// COLORS + ICONS
 const modeStyles = {
   "2v2": { color: "#22C55E", emoji: "🟢", button: ButtonStyle.Success },
   "3v3": { color: "#3B82F6", emoji: "🔵", button: ButtonStyle.Primary },
   "4v4": { color: "#8B5CF6", emoji: "🟣", button: ButtonStyle.Secondary }
 };
 
-// RESET CHANNEL
-async function resetMatchmakingChannel() {
-  const ch = client.channels.cache.get(MATCHMAKING_CHANNEL_ID);
-  if (!ch) return;
 
-  const msgs = await ch.messages.fetch({ limit: 100 }).catch(() => {});
-  if (msgs) await ch.bulkDelete(msgs).catch(() => {});
+// =====================
+// RESET MATCHMAKING CHANNEL
+// =====================
+
+async function resetMatchmakingChannel() {
+  const channel = client.channels.cache.get(MATCHMAKING_CHANNEL_ID);
+  if (!channel) return;
+
+  const msgs = await channel.messages.fetch({ limit: 100 }).catch(() => {});
+  if (msgs) await channel.bulkDelete(msgs).catch(() => {});
 
   const embed = new EmbedBuilder()
     .setColor("#22C55E")
@@ -119,33 +126,40 @@ async function resetMatchmakingChannel() {
     );
 
   const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId("create_match")
-      .setLabel("Create Match")
-      .setStyle(ButtonStyle.Success)
+    new ButtonBuilder().setCustomId("create_match").setLabel("Create Match").setStyle(ButtonStyle.Success)
   );
 
-  await ch.send({ embeds: [embed], components: [row] });
+  channel.send({ embeds: [embed], components: [row] });
 }
 
-// READY
 client.once("ready", () => {
   console.log(`Logged in as ${client.user.tag}`);
   resetMatchmakingChannel();
 });
 
-// HOST COOLDOWN
+
+// =====================
+// COOLDOWN CHECK
+// =====================
+
 async function checkHostCooldown(id) {
-  const e = await HostCooldown.findOne({ userId: id });
-  if (!e) return 0;
-  const diff = Date.now() - e.timestamp;
+  const entry = await HostCooldown.findOne({ userId: id });
+  if (!entry) return 0;
+
+  const diff = Date.now() - entry.timestamp;
   if (diff >= 300000) return 0;
+
   return Math.ceil((300000 - diff) / 60000);
 }
 
-// STEP 1 — MODE SELECTION
+
+// =====================
+// STEP 1: CREATE MATCH
+// =====================
+
 client.on("interactionCreate", async i => {
-  if (!i.isButton() || i.customId !== "create_match") return;
+  if (!i.isButton()) return;
+  if (i.customId !== "create_match") return;
 
   const cd = await checkHostCooldown(i.user.id);
   if (cd > 0)
@@ -162,17 +176,24 @@ client.on("interactionCreate", async i => {
     new ButtonBuilder().setCustomId("mode_4v4").setLabel("🟣 4v4").setStyle(ButtonStyle.Secondary)
   );
 
-  return i.reply({ embeds: [embed], components: [row], ephemeral: true });
+  i.reply({ embeds: [embed], components: [row], ephemeral: true });
 });
 
-// STEP 2 — CHECK REUSE
+
+// =====================
+// STEP 2: ASK REUSE
+// =====================
+
 client.on("interactionCreate", async i => {
-  if (!i.isButton() || !i.customId.startsWith("mode_")) return;
+  if (!i.isButton()) return;
+  if (!i.customId.startsWith("mode_")) return;
 
   const mode = i.customId.replace("mode_", "");
   const stats = await HostStats.findOne({ userId: i.user.id });
 
-  if (!stats) return openModal(i, false, null, mode);
+  if (!stats) {
+    return openModal(i, false, null, mode);
+  }
 
   const embed = new EmbedBuilder()
     .setColor("#22C55E")
@@ -184,12 +205,40 @@ client.on("interactionCreate", async i => {
     new ButtonBuilder().setCustomId(`reuse_no_${mode}`).setLabel("No").setStyle(ButtonStyle.Secondary)
   );
 
-  return i.reply({ embeds: [embed], components: [row], ephemeral: true });
+  i.reply({ embeds: [embed], components: [row], ephemeral: true });
 });
 
-// STEP 3 — MODAL
+
+// =====================
+// STEP 3: REUSE HANDLERS (FEHLTE BEI DIR)
+// =====================
+
+client.on("interactionCreate", async i => {
+  if (!i.isButton()) return;
+
+  // YES
+  if (i.customId.startsWith("reuse_yes_")) {
+    const mode = i.customId.replace("reuse_yes_", "");
+    const stats = await HostStats.findOne({ userId: i.user.id });
+    return openModal(i, true, stats, mode);
+  }
+
+  // NO
+  if (i.customId.startsWith("reuse_no_")) {
+    const mode = i.customId.replace("reuse_no_", "");
+    return openModal(i, false, null, mode);
+  }
+});
+
+
+// =====================
+// MODAL BUILDER
+// =====================
+
 function openModal(i, autofill, data, mode) {
-  const modal = new ModalBuilder().setCustomId(`match_form_${mode}`).setTitle(`Create ${mode.toUpperCase()} Match`);
+  const modal = new ModalBuilder()
+    .setCustomId(`match_form_${mode}`)
+    .setTitle(`Create ${mode.toUpperCase()} Match`);
 
   const fields = [
     ["gameplay", "Level | Rank | Playstyle", true, TextInputStyle.Short],
@@ -200,14 +249,18 @@ function openModal(i, autofill, data, mode) {
   ];
 
   modal.addComponents(
-    ...fields.map(([id, label, req, style]) =>
+    ...fields.map(([id, label, required, style]) =>
       new ActionRowBuilder().addComponents(
         new TextInputBuilder()
           .setCustomId(id)
           .setLabel(label)
-          .setRequired(req)
+          .setRequired(required)
           .setStyle(style)
-          .setValue(autofill && data ? (id === "comm" ? data.communication : data[id] || "") : "")
+          .setValue(
+            autofill && data
+              ? (id === "comm" ? data.communication : data[id] || "")
+              : ""
+          )
       )
     )
   );
@@ -215,9 +268,14 @@ function openModal(i, autofill, data, mode) {
   return i.showModal(modal);
 }
 
-// STEP 4 — SUBMIT FORM
+
+// =====================
+// STEP 4: SUBMIT FORM
+// =====================
+
 client.on("interactionCreate", async i => {
-  if (!i.isModalSubmit() || !i.customId.startsWith("match_form_")) return;
+  if (!i.isModalSubmit()) return;
+  if (!i.customId.startsWith("match_form_")) return;
 
   const mode = i.customId.replace("match_form_", "");
   const style = modeStyles[mode] || modeStyles["2v2"];
@@ -233,23 +291,27 @@ client.on("interactionCreate", async i => {
   const gp = parseGameplay(gameplay);
   const cm = parseCommunication(comm);
 
-  // Save stats
   await HostStats.findOneAndUpdate(
     { userId: user.id },
     { gameplay, ability, region, communication: comm, notes, mode },
     { upsert: true }
   );
 
-  await RequestCounter.findOneAndUpdate({ hostId: user.id }, { count: 0 }, { upsert: true });
-  await HostCooldown.findOneAndUpdate({ userId: user.id }, { timestamp: Date.now() }, { upsert: true });
+  await RequestCounter.findOneAndUpdate(
+    { hostId: user.id },
+    { count: 0 },
+    { upsert: true }
+  );
 
-  // EMBED
+  await HostCooldown.findOneAndUpdate(
+    { userId: user.id },
+    { timestamp: Date.now() },
+    { upsert: true }
+  );
+
   const embed = new EmbedBuilder()
     .setColor(style.color)
-    .setAuthor({
-      name: `${user.username}`,
-      iconURL: user.displayAvatarURL({ size: 256 })
-    })
+    .setAuthor({ name: `${user.username}`, iconURL: user.displayAvatarURL({ size: 256 }) })
     .setTitle(`${style.emoji} ${mode.toUpperCase()} Match`)
     .setDescription(
 `╔════════ MATCH ════════╗
@@ -273,20 +335,11 @@ VC: ${cm.vc}
 Language: ${cm.language}
 
 📝 **Looking for**
-${notes || "None"}`
-    );
+${notes || "None"}` );
 
-  // BUTTONS
   const buttons = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`req_${user.id}`)
-      .setLabel("Play Together")
-      .setStyle(style.button),
-
-    new ButtonBuilder()
-      .setCustomId(`refresh_${user.id}`)
-      .setLabel("Refresh Match")
-      .setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId(`req_${user.id}`).setLabel("Play Together").setStyle(style.button),
+    new ButtonBuilder().setCustomId(`refresh_${user.id}`).setLabel("Refresh Match").setStyle(ButtonStyle.Secondary)
   );
 
   const ch = client.channels.cache.get(FIND_PLAYERS_CHANNEL_ID);
@@ -297,15 +350,10 @@ ${notes || "None"}`
     components: [buttons]
   });
 
-  // AUTO-EXPIRE + DELETE
   setTimeout(async () => {
     try {
       const expired = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId("expired")
-          .setLabel("Expired")
-          .setStyle(ButtonStyle.Secondary)
-          .setDisabled(true)
+        new ButtonBuilder().setCustomId("expired").setLabel("Expired").setStyle(ButtonStyle.Secondary).setDisabled(true)
       );
 
       await msg.edit({
@@ -313,35 +361,38 @@ ${notes || "None"}`
         components: [expired]
       });
 
-      // Delete after expire
       setTimeout(() => msg.delete().catch(() => {}), 20000);
-
     } catch {}
-  }, 600000); // 10 min
+  }, 600000);
 
-  return i.reply({ content: "Match created!", ephemeral: true });
+  i.reply({ content: "Match created!", ephemeral: true });
 });
 
-// REFRESH MATCH (HOST ONLY)
+
+// =====================
+// REFRESH
+// =====================
+
 client.on("interactionCreate", async i => {
-  if (!i.isButton() || !i.customId.startsWith("refresh_")) return;
+  if (!i.isButton()) return;
+  if (!i.customId.startsWith("refresh_")) return;
 
   const hostId = i.customId.replace("refresh_", "");
   if (i.user.id !== hostId)
     return i.reply({ content: "Only the match host can refresh this.", ephemeral: true });
 
-  const oldMsg = i.message;
-  await oldMsg.delete().catch(() => {});
-
-  return i.reply({
-    content: "Refreshing match...",
-    ephemeral: true
-  });
+  await i.message.delete().catch(() => {});
+  i.reply({ content: "Refreshing match...", ephemeral: true });
 });
 
+
+// =====================
 // PLAYER REQUEST
+// =====================
+
 client.on("interactionCreate", async i => {
-  if (!i.isButton() || !i.customId.startsWith("req_")) return;
+  if (!i.isButton()) return;
+  if (!i.customId.startsWith("req_")) return;
 
   const hostId = i.customId.replace("req_", "");
   const requester = i.user;
@@ -382,18 +433,23 @@ ${matchEmbed.description}`
       .setStyle(ButtonStyle.Primary)
   );
 
-  await host.send({ embeds: [embed], components: [row] }).catch(() => {});
-  return i.reply({ content: "Request sent!", ephemeral: true });
+  host.send({ embeds: [embed], components: [row] }).catch(() => {});
+  i.reply({ content: "Request sent!", ephemeral: true });
 });
 
-// LINK MODAL
-client.on("interactionCreate", async i => {
-  if (!i.isButton() || !i.customId.startsWith("link_")) return;
 
-  const id = i.customId.replace("link_", "");
+// =====================
+// LINK MODAL
+// =====================
+
+client.on("interactionCreate", async i => {
+  if (!i.isButton()) return;
+  if (!i.customId.startsWith("link_")) return;
+
+  const requesterId = i.customId.replace("link_", "");
 
   const modal = new ModalBuilder()
-    .setCustomId(`sendlink_${id}`)
+    .setCustomId(`sendlink_${requesterId}`)
     .setTitle("Send your Private Server Link")
     .addComponents(
       new ActionRowBuilder().addComponents(
@@ -405,12 +461,17 @@ client.on("interactionCreate", async i => {
       )
     );
 
-  return i.showModal(modal);
+  i.showModal(modal);
 });
 
-// LINK SUBMISSION
+
+// =====================
+// LINK SUBMIT
+// =====================
+
 client.on("interactionCreate", async i => {
-  if (!i.isModalSubmit() || !i.customId.startsWith("sendlink_")) return;
+  if (!i.isModalSubmit()) return;
+  if (!i.customId.startsWith("sendlink_")) return;
 
   const id = i.customId.replace("sendlink_", "");
   const link = i.fields.getTextInputValue("link").trim();
@@ -425,10 +486,16 @@ client.on("interactionCreate", async i => {
     return i.reply({ content: "Invalid private server link format.", ephemeral: true });
 
   const host = await client.users.fetch(id).catch(() => {});
-  if (host) host.send(`Here is the private server link:\n${link}`).catch(() => {});
+  if (host) {
+    host.send(`Here is the private server link:\n${link}`).catch(() => {});
+  }
 
-  return i.reply({ content: "Private link sent!", ephemeral: true });
+  i.reply({ content: "Private link sent!", ephemeral: true });
 });
 
+
+// =====================
 // LOGIN
+// =====================
+
 client.login(process.env.BOT_TOKEN);
