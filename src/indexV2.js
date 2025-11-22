@@ -102,8 +102,10 @@ const parseCommunication = text => {
 const modeStyles = {
   "2v2": { color: "#22C55E", emoji: "🟢", button: ButtonStyle.Success },
   "3v3": { color: "#3B82F6", emoji: "🔵", button: ButtonStyle.Primary },
-  "4v4": { color: "#8B5CF6", emoji: "🟣", button: ButtonStyle.Secondary }
+  "4v4": { color: "#8B5CF6", emoji: "🟣", button: ButtonStyle.Secondary },
+  "6v6": { color: "#FACC15", emoji: "🟡", button: ButtonStyle.Secondary }
 };
+
 
 
 // =====================
@@ -173,7 +175,8 @@ client.on("interactionCreate", async i => {
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId("mode_2v2").setLabel("🟢 2v2").setStyle(ButtonStyle.Success),
     new ButtonBuilder().setCustomId("mode_3v3").setLabel("🔵 3v3").setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId("mode_4v4").setLabel("🟣 4v4").setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId("mode_4v4").setLabel("🟣 4v4").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("mode_6v6").setLabel("🟡 6v6").setStyle(ButtonStyle.Secondary0),
   );
 
   i.reply({ embeds: [embed], components: [row], ephemeral: true });
@@ -198,11 +201,11 @@ client.on("interactionCreate", async i => {
   const embed = new EmbedBuilder()
     .setColor("#22C55E")
     .setTitle("Use previous settings?")
-    .setDescription("Do you want to reuse your last match data?");
+    .setDescription("Do you want your last stats?");
 
   const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`reuse_yes_${mode}`).setLabel("Yes").setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId(`reuse_no_${mode}`).setLabel("No").setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId(`reuse_yes_${mode}`).setLabel("Yes I want use my last stats").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`reuse_no_${mode}`).setLabel("No I don't want use my last stats").setStyle(ButtonStyle.Secondary)
   );
 
   i.reply({ embeds: [embed], components: [row], ephemeral: true });
@@ -218,14 +221,14 @@ client.on("interactionCreate", async i => {
 
   // YES
   if (i.customId.startsWith("reuse_yes_")) {
-    const mode = i.customId.replace("reuse_yes_", "");
+    const mode = i.customId.replace("reuse_yes I want use my last stats_", "");
     const stats = await HostStats.findOne({ userId: i.user.id });
     return openModal(i, true, stats, mode);
   }
 
   // NO
-  if (i.customId.startsWith("reuse_no_")) {
-    const mode = i.customId.replace("reuse_no_", "");
+  if (i.customId.startsWith("reuse_no I don't want use my last stats_")) {
+    const mode = i.customId.replace("reuse_no I don't want use my last stats_", "");
     return openModal(i, false, null, mode);
   }
 });
@@ -343,7 +346,7 @@ ${notes || "None"}`
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`req_${user.id}`)
-      .setLabel("Play Together")
+      .setLabel("Click here do Play Together")
       .setStyle(style.button)
   );
 
