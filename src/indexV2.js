@@ -386,20 +386,21 @@ client.on("interactionCreate", async i => {
 });
 
 
-// PLAYER REQUEST (mit neuer Nachricht und Text)
+// PLAYER REQUEST (komplett korrigiert)
 client.on("interactionCreate", async i => {
   if (!i.isButton() || !i.customId.startsWith("req_")) return;
 
   const hostId = i.customId.replace("req_", "");
   const requester = i.user;
 
-  // Log + Count
+  // Cooldown Log
   await Cooldowns.findOneAndUpdate(
     { userId: requester.id, hostId },
     { timestamp: Date.now() },
     { upsert: true }
   );
 
+  // Count hochzählen
   const counter = await RequestCounter.findOneAndUpdate(
     { hostId },
     { $inc: { count: 1 } },
@@ -411,10 +412,10 @@ client.on("interactionCreate", async i => {
 
   const matchEmbed = i.message.embeds[0];
 
-  // 🔥 Neuer Text im Embed
+  // Embed für den Host
   const embed = new EmbedBuilder()
     .setColor("#22C55E")
-    .setTitle("Volleyball Legends private server link")
+    .setTitle("Send your Volleyball Legends private server link")
     .setDescription(
 `**${requester} wants to join your match.**
 
@@ -427,7 +428,7 @@ Below is the information from your match:
 ${matchEmbed.description}`
     );
 
-  // 🔥 Neuer Button-Text
+  // Button, der das Modal öffnet (✔ korrekt, KEIN setTitle!)
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`link_${requester.id}`)
@@ -435,22 +436,22 @@ ${matchEmbed.description}`
       .setStyle(ButtonStyle.Primary)
   );
 
+  // Host bekommt die DM
   await host.send({ embeds: [embed], components: [row] }).catch(() => {});
+
+  // Spieler bekommt Bestätigung
   return i.reply({ content: "Request sent!", ephemeral: true });
 });
 
 
 
-// =====================
-// LINK MODAL
-// =====================
-
+// LINK MODAL (komplett korrigiert)
 client.on("interactionCreate", async i => {
-  if (!i.isButton()) return;
-  if (!i.customId.startsWith("link_")) return;
+  if (!i.isButton() || !i.customId.startsWith("link_")) return;
 
   const requesterId = i.customId.replace("link_", "");
 
+  // Modal erstellen (✔ Titel < 45 Zeichen)
   const modal = new ModalBuilder()
     .setCustomId(`sendlink_${requesterId}`)
     .setTitle("Volleyball Legends private server link")
@@ -458,14 +459,15 @@ client.on("interactionCreate", async i => {
       new ActionRowBuilder().addComponents(
         new TextInputBuilder()
           .setCustomId("link")
-          .setTitle("Volleyball Legends private server link")
+          .setLabel("Enter your Volleyball Legends link")
           .setRequired(true)
           .setStyle(TextInputStyle.Short)
       )
     );
 
-  i.showModal(modal);
+  return i.showModal(modal);
 });
+
 
 
 // =====================
