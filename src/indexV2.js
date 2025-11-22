@@ -82,7 +82,7 @@ client.on("messageCreate", msg => {
 });
 
 const MATCHMAKING_CHANNEL_ID = "1441139756007161906";
-const FIND_PLAYERS_CHANNEL_ID = "1441140684622008441";
+const FIND_PLAYERS_CHANNEL_ID = "1441813466787614832";
 
 
 // =====================
