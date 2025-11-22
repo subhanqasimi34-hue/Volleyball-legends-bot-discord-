@@ -176,7 +176,7 @@ client.on("interactionCreate", async i => {
     new ButtonBuilder().setCustomId("mode_2v2").setLabel("🟢 2v2").setStyle(ButtonStyle.Success),
     new ButtonBuilder().setCustomId("mode_3v3").setLabel("🔵 3v3").setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId("mode_4v4").setLabel("🟣 4v4").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId("mode_6v6").setLabel("🟡 6v6").setStyle(ButtonStyle.Secondary0),
+    new ButtonBuilder().setCustomId("mode_6v6").setLabel("🟡 6v6").setStyle(ButtonStyle.Primary)
   );
 
   i.reply({ embeds: [embed], components: [row], ephemeral: true });
@@ -201,11 +201,18 @@ client.on("interactionCreate", async i => {
   const embed = new EmbedBuilder()
     .setColor("#22C55E")
     .setTitle("Use previous settings?")
-    .setDescription("Do you want your last stats?");
+    .setDescription("Do you want to reuse your last settings?");
 
   const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`reuse_yes_${mode}`).setLabel("Yes I want use my last stats").setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId(`reuse_no_${mode}`).setLabel("No I don't want use my last stats").setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder()
+      .setCustomId(`reuse_yes_${mode}`)
+      .setLabel("Yes, use my last settings")
+      .setStyle(ButtonStyle.Success),
+
+    new ButtonBuilder()
+      .setCustomId(`reuse_no_${mode}`)
+      .setLabel("No, I want to enter new settings")
+      .setStyle(ButtonStyle.Secondary)
   );
 
   i.reply({ embeds: [embed], components: [row], ephemeral: true });
@@ -213,22 +220,22 @@ client.on("interactionCreate", async i => {
 
 
 // =====================
-// STEP 3: REUSE HANDLERS (FEHLTE BEI DIR)
+// STEP 3: REUSE HANDLERS
 // =====================
 
 client.on("interactionCreate", async i => {
   if (!i.isButton()) return;
 
-  // YES
+  // YES reuse
   if (i.customId.startsWith("reuse_yes_")) {
-    const mode = i.customId.replace("reuse_yes I want use my last stats_", "");
+    const mode = i.customId.replace("reuse_yes_", "");
     const stats = await HostStats.findOne({ userId: i.user.id });
     return openModal(i, true, stats, mode);
   }
 
-  // NO
-  if (i.customId.startsWith("reuse_no I don't want use my last stats_")) {
-    const mode = i.customId.replace("reuse_no I don't want use my last stats_", "");
+  // NO reuse
+  if (i.customId.startsWith("reuse_no_")) {
+    const mode = i.customId.replace("reuse_no_", "");
     return openModal(i, false, null, mode);
   }
 });
@@ -272,7 +279,11 @@ function openModal(i, autofill, data, mode) {
 }
 
 
-// STEP 4 — SUBMIT FORM (MATCH ERSTELLEN + 4 MIN EXPIRE)
+// =====================
+// STEP 4 — SUBMIT FORM
+// + 4 MIN EXPIRE SYSTEM
+// =====================
+
 client.on("interactionCreate", async i => {
   if (!i.isModalSubmit() || !i.customId.startsWith("match_form_")) return;
 
@@ -339,18 +350,16 @@ VC: ${cm.vc}
 Language: ${cm.language}
 
 📝 **Looking for**
-${notes || "None"}`
-    );
-
-  // ONLY PLAY BUTTON (Refresh entfernt)
+${notes || "None"}`)
+  
+  // BUTTON (NO REFRESH)
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`req_${user.id}`)
-      .setLabel("Click here do Play Together")
+      .setLabel("Click here to Play Together")
       .setStyle(style.button)
   );
 
-  // SEND TO FIND-PLAYERS
   const ch = client.channels.cache.get(FIND_PLAYERS_CHANNEL_ID);
 
   const msg = await ch.send({
@@ -374,11 +383,8 @@ ${notes || "None"}`
         components: [expiredRow]
       });
 
-      // Optional: löschen nach 20 sec
-      // setTimeout(() => msg.delete().catch(() => {}), 20000);
-
     } catch (err) {}
-  }, 240000); // 4 Minuten
+  }, 240000); // 4 minutes
 
   return i.reply({ content: "Match created!", ephemeral: true });
 });
