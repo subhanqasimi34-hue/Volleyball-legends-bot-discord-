@@ -441,9 +441,13 @@ ${matchEmbed.description}`
 
 
 
-// LINK MODAL (neue Texte)
+// =====================
+// LINK MODAL
+// =====================
+
 client.on("interactionCreate", async i => {
-  if (!i.isButton() || !i.customId.startsWith("link_")) return;
+  if (!i.isButton()) return;
+  if (!i.customId.startsWith("link_")) return;
 
   const requesterId = i.customId.replace("link_", "");
 
@@ -460,9 +464,8 @@ client.on("interactionCreate", async i => {
       )
     );
 
-  return i.showModal(modal);
+  i.showModal(modal);
 });
-
 
 
 // =====================
