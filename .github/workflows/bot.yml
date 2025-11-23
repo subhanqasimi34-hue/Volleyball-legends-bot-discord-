@@ -1,4 +1,4 @@
-name: Discord Bot 24/7
+name: Discord Bot 24-7
 
 on:
   workflow_dispatch:
@@ -10,29 +10,31 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: get repo
         uses: actions/checkout@v3
 
-      - name: Setup Node.js
+      - name: node setup idk
         uses: actions/setup-node@v3
         with:
-          node-version: 18
+          node-version: "18"
 
-      - name: Install dependencies
-        run: npm install
+      - name: install stuff
+        run: |
+          npm install
+          echo "install done maybe"
 
-    
-      - name: Download cloudflared
+      - name: get cloudflared thing
         run: |
           curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o cloudflared
           chmod +x cloudflared
+          echo "cloudflared downloaded??"
 
-      - name: Start Cloudflare Tunnel
+      - name: run tunnel (i hope)
         run: ./cloudflared tunnel run --token "$TUNNEL_TOKEN" &
         env:
           TUNNEL_TOKEN: ${{ secrets.TUNNEL_TOKEN }}
 
-      - name: Start Discord Bot
+      - name: start bot lol
         run: |
           node src/indexV2.js &
           sleep 999999
